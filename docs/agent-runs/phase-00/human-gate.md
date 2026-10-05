@@ -13,3 +13,12 @@ description: Use to create the ScholarChain agent system from scratch and to mai
 ## Effectiveness
 
 No constitutional change takes effect until a human has ratified it **and** the session has been restarted. Until both have happened, the previous ratified configuration stays in force, and you must act as if your proposed changes do not exist.
+
+Decision: Rejected -  need to rerun
+
+The factory-engineer shouldn't approve it's own changes because the approvals that it makes will affect the entirety of the agent system
+If tools: is ommitted, then the agent can use ANY tools available
+terraform destroy is stopped currently by either that factory-engineer isn't running, or that I, the developer, haven't prompted Claude code to not block it yet
+
+
+
