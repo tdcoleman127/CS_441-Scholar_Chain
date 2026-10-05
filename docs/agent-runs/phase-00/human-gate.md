@@ -1,3 +1,4 @@
+Attempt #1
 The biggest differerence I see in between the prompt and the report
 
 description: a routing-grade description stating that it creates and maintains the agent system from scratch, prepares 
@@ -21,4 +22,8 @@ If tools: is ommitted, then the agent can use ANY tools available
 terraform destroy is stopped currently by either that factory-engineer isn't running, or that I, the developer, haven't prompted Claude code to not block it yet
 
 
+Attempt #2
+Ratified commit 97e1d2c7686eb4d9142ca6d7e2904e001d3daf2a
+Decision: Accepted -  need to rerun
 
+Phase 0 record ratified commit 97e1d2c7686eb4d9142ca6d7e2904e001d3daf2a
