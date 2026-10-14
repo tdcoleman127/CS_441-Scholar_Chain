@@ -53,9 +53,11 @@ These refinements keep section 2's intent and make it exact for this repository.
 7. **prompts/ split.** `prompts/**` (runtime prompts and their output schemas) belongs to rag-engineer. The entity-resolution adjudication prompt and schema live inside `modules/entity-resolution/**`.
 8. **Shared subsystems, split by verb.** S3 Vectors: infra-engineer writes the Terraform resources, storage-engineer writes the ingestion and query adapters, and rag-engineer writes the embedding text, chunking, and retrieval logic. Evaluation: entity-resolution-engineer and rag-engineer write the evaluation code in their own modules, and experiment-engineer runs approved evaluations and owns the raw results. Pipelines: module owners write the jobs, infra-engineer writes `scripts/run-bounded-pipeline.sh`, and deploy-engineer runs it.
 
-## 4. Ownership map (enforced by `.claude/hooks/guard-ownership.sh`)
+## 4. Ownership map (enforced mechanically for Write and Edit by `.claude/hooks/guard-ownership.sh`)
 
-Exactly one writer per path. The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every write to it is blocked until an amendment assigns one.
+Exactly one writer per path. The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every Write or Edit to it is blocked until an amendment assigns one.
+
+Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). It does not detect writes that a program makes internally without naming the path on the command line, or writes through symlinks.
 
 | Path | Owner | Gate |
 |---|---|---|
@@ -66,7 +68,7 @@ Exactly one writer per path. The first matching row wins. Paths are matched case
 | `docs/incidents/**` | `incident-responder` | Human escalation rules (section 8) |
 | `docs/**` (all other), `README.md`, `reports/final-report.md` | `documentation-engineer` | Link check, command replay, evidence review |
 | `reports/deployments/**`, `reports/releases/**` | `deploy-engineer` | Approved plan, smoke tests |
-| `build.sbt`, `project/**`, `.scalafmt.conf`, `.gitignore`, `.gitattributes`, `docker-compose*.y*ml`, `compose*.y*ml`, `docker/**`, and `.gitkeep` placeholders anywhere | `build-engineer` | `sbt check`, code review |
+| `build.sbt`, `project/**`, `.scalafmt.conf`, `.gitignore`, `.gitattributes`, `docker-compose*.y*ml`, `compose*.y*ml`, `docker/**`, and empty `.gitkeep` placeholders anywhere except `.claude/**`, `docs/agent-runs/**`, and paths owned by factory-engineer, the human, or generated | `build-engineer` | `sbt check`, code review |
 | `modules/core/**` | `domain-engineer` | Contract tests, `sbt check`, code review |
 | `modules/hadoop/**` | `hadoop-engineer` | Sample run, deterministic outputs |
 | `modules/entity-resolution/**` | `entity-resolution-engineer` | Gold-set evaluation, match-policy review |
@@ -85,7 +87,7 @@ Secret material (`.env*`, keys, keystores, `secrets/**`, `*.tfstate`) is never w
 
 ## 5. Tool fences
 
-Every agent file has an explicit `tools:` line. Enforcement layers, strongest first: the tool is absent from the fence; a deny rule or hook; an instruction backed by reviewer detection.
+Every agent file has an explicit `tools:` line. Enforcement layers, strongest first: the tool is absent from the fence; a deny rule or hook; an instruction backed by reviewer detection. "Ownership hook" below means guard-ownership.sh, which fences the Write and Edit tools only. An agent that has Bash can write outside its territory through Bash. Those writes rely on the permission prompt, the role file, and code-reviewer detection, except for the protected paths that guard-dangerous.sh blocks (section 4, "Enforcement limits").
 
 | Agent | Tools | Additional mechanical enforcement |
 |---|---|---|
@@ -99,7 +101,7 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
 | `storage-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
 | `rag-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
 | `service-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
-| `test-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook limits writes to `tests/**` |
+| `test-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook limits Write and Edit to `tests/**`; Bash writes are fenced by instruction and review only |
 | `code-reviewer` | Read, Grep, Glob, Bash | No Write, Edit, or MCP. Bash is fenced to evidence commands by guard-dangerous.sh (`READ_ONLY_AGENTS`) |
 | `infra-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws`, terraform registry (7 read tools), aws-docs search/read, GitHub Actions read (3 tools) | terraform apply/destroy denied; deploy/rollback/smoke scripts denied to it; AWS MCP read-only |
 | `deploy-engineer` | Read, Grep, Glob, Bash, Write, `mcp__aws-api__call_aws` | No Edit. Writes only `reports/deployments|releases/**`. Runs only mapped scripts in approved environments. Direct AWS mutations blocked |

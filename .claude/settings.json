@@ -3,19 +3,20 @@
   "permissions": {
     "disableBypassPermissionsMode": "disable",
     "allow": [
-      "Bash(sbt Test/compile*)",
-      "Bash(sbt compile*)",
-      "Bash(sbt test*)",
-      "Bash(sbt testOnly*)",
-      "Bash(sbt check*)",
-      "Bash(sbt clean check*)",
-      "Bash(sbt fmt*)",
-      "Bash(sbt scalafmtCheckAll*)",
-      "Bash(sbt --client *)",
+      "Bash(sbt Test/compile)",
+      "Bash(sbt compile)",
+      "Bash(sbt test)",
+      "Bash(sbt check)",
+      "Bash(sbt clean check)",
+      "Bash(sbt fmt)",
+      "Bash(sbt scalafmtCheckAll)",
       "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)",
-      "Bash(git show*)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log)",
+      "Bash(git log *)",
+      "Bash(git show)",
+      "Bash(git show *)",
       "Bash(git blame*)",
       "Bash(git ls-files*)",
       "Bash(git rev-parse*)",
@@ -62,6 +63,13 @@
       "mcp__terraform__get_latest_module_version"
     ],
     "ask": [
+      "Bash(sbt testOnly*)",
+      "Bash(sbt \"testOnly*)",
+      "Bash(sbt --client *)",
+      "Bash(git diff *--ou*)",
+      "Bash(git log *--ou*)",
+      "Bash(git show *--ou*)",
+      "Bash(python -m json.tool * *)",
       "Bash(git add*)",
       "Bash(git commit*)",
       "Bash(git push*)",
@@ -118,6 +126,13 @@
       "Read(~/.ssh/**)",
       "Read(~/.docker/config.json)",
       "Read(~/.claude/.credentials.json)",
+      "Read(**/.credentials)",
+      "Read(~/.sbt/.credentials)",
+      "Read(~/.ivy2/.credentials)",
+      "Read(**/credentials.tfrc.json)",
+      "Read(~/.terraform.d/credentials.tfrc.json)",
+      "Read(**/gh/hosts.yml)",
+      "Read(~/.config/gh/hosts.yml)",
       "Edit(**/.env)",
       "Edit(**/.env.*)",
       "Edit(**/secrets/**)",
@@ -209,7 +224,16 @@
       "Bash(./scripts/cleanup.sh*)",
       "Bash(bash scripts/cleanup.sh*)",
       "Bash(bash ./scripts/cleanup.sh*)",
-      "Bash(sh scripts/cleanup.sh*)"
+      "Bash(sh scripts/cleanup.sh*)",
+      "Bash(sh ./scripts/cleanup.sh*)",
+      "Bash(./cleanup.sh*)",
+      "Bash(cleanup.sh*)",
+      "Bash(bash --no*cleanup.sh*)",
+      "Bash(*/bash *cleanup.sh*)",
+      "Bash(*/sh *cleanup.sh*)",
+      "Bash(*bash.exe *cleanup.sh*)",
+      "Bash(source *cleanup.sh*)",
+      "Bash(. *cleanup.sh*)"
     ]
   },
   "hooks": {
@@ -217,19 +241,19 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"", "timeout": 20 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so commands cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
         ]
       },
       {
         "matcher": "mcp__aws-api__call_aws",
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"", "timeout": 20 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so AWS calls cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
         ]
       },
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ownership.sh\"", "timeout": 20 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ownership.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-ownership.sh is missing, so writes cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
         ]
       }
     ],
@@ -245,14 +269,14 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-tests-ran.sh\"", "timeout": 30 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-tests-ran.sh\"; [ -f \"$h\" ] && exec bash \"$h\"; grep -Eq '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true' && exit 0; echo 'BLOCKED: .claude/hooks/verify-tests-ran.sh is missing, so the test-stop gate cannot run (fail closed). Report this and ask the human to restore it from git.' >&2; exit 2", "timeout": 30 }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-tests-ran.sh\"", "timeout": 30 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-tests-ran.sh\"; [ -f \"$h\" ] && exec bash \"$h\"; grep -Eq '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true' && exit 0; echo 'BLOCKED: .claude/hooks/verify-tests-ran.sh is missing, so the test-stop gate cannot run (fail closed). Report this and ask the human to restore it from git.' >&2; exit 2", "timeout": 30 }
         ]
       }
     ]

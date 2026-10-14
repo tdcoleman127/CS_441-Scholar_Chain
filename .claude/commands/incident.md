@@ -10,7 +10,7 @@ Responsible agent: `incident-responder`
 ## Gates
 
 1. Diagnose before acting: the first output is an evidence-backed hypothesis, not a remediation.
-2. Autonomous actions are limited to `scripts/rollback.sh <environment>` (when the latest release is the proximate cause) and `scripts/smoke-test.sh <environment>`. Each runs only after a human permission prompt.
+2. Autonomous actions are limited to `scripts/rollback.sh <environment>` (when the latest release is the proximate cause) and `scripts/smoke-test.sh <environment>`. `rollback.sh` runs only after a human permission prompt; `smoke-test.sh` is read-only verification and runs without a prompt (docs/agents.md section 7).
 3. Human escalation is mandatory for data repair or deletion, schema changes, security findings (credentials, IAM, exposure), Terraform changes, scaling beyond configured bounds, and any destructive action.
 4. Timebox: if 15 minutes of investigation yields no credible hypothesis, stop and hand over the evidence dossier.
 5. Never manufacture a destructive incident in a live shared course account.

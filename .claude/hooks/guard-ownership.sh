@@ -93,8 +93,19 @@ fi
 
 [ "$caller" = "$owner" ] && exit 0
 
+# build-engineer's .gitkeep exception (finding 9): an EMPTY Write only, and never inside .claude/**,
+# docs/agent-runs/**, or a path whose first-match owner is factory-engineer, human, or generated.
 if [ "$caller" = "build-engineer" ]; then
-  case "$rel" in .gitkeep|*/.gitkeep) exit 0 ;; esac   # empty skeleton directories only
+  case "$rel" in
+    .claude/*|docs/agent-runs/*) ;;
+    .gitkeep|*/.gitkeep)
+      case "$owner" in
+        factory-engineer|human|generated) ;;
+        *)
+          [ "$(sc_field tool_name)" = "Write" ] && [ -z "$(sc_field tool_input.content | tr -d '[:space:]')" ] && exit 0
+          sc_block "build-engineer may create '$path' only as an empty file with the Write tool (skeleton directory placeholder). Otherwise the owner is $owner." ;;
+      esac ;;
+  esac
 fi
 
 case "$owner" in
