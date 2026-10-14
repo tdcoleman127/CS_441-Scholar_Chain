@@ -105,5 +105,7 @@ Remaining risks:
   .last-test-run), markTestRun reachable only from sbt check.
 *Same things to watch for as R1
 
+Ratification statement:
+I ratify the changes made to build the ScholarChain factory on the set of stipulations that make sure agent permissions are frequently checked as agents are accessing certain files. R1 and R2 checks here are more basic things to check for, bash reading issues, etc., and associated minor issues with hooks.
 
-Accepted commit: <hash>
+Accepted commit: 3d7287e38fb2a479ff5c3c3a05987e781abfeade
