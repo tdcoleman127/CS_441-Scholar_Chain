@@ -1,0 +1,21 @@
+# ScholarChain .gitattributes. Owner: build-engineer.
+# LF line endings for files that tools parse or execute, so Windows checkouts match the
+# formatter (.scalafmt.conf lineEndings = unix) and shell scripts run under bash.
+*.scala      text eol=lf
+*.sbt        text eol=lf
+*.java       text eol=lf
+*.conf       text eol=lf
+*.properties text eol=lf
+*.sh         text eol=lf
+*.tf         text eol=lf
+*.hcl        text eol=lf
+*.json       text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+Dockerfile   text eol=lf
+
+# Binary artifacts are never diffed or normalized.
+*.jar   binary
+*.gz    binary
+*.zip   binary
+*.parquet binary
