@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE dblp SYSTEM "dblp.dtd">
+<!-- ScholarChain synthetic DBLP rejected-input sample. CC0-1.0. FICTIONAL records.
+     Deliberately NOT well-formed: an entity the DTD does not declare (&notdeclared;), and the
+     file ends inside an unclosed record, as a truncated download would. A parser must report
+     this file as rejected input, not crash and not silently drop it. -->
+<dblp>
+<article key="journals/scsample/Good24" mdate="2024-01-01">
+<author>Ada Sample 0001</author>
+<title>A Well-Formed Record Before the Damage.</title>
+<year>2024</year>
+<journal>J. Sample Data</journal>
+</article>
+<article key="journals/scsample/BadEntity24" mdate="2024-01-02">
+<author>Ren&notdeclared; Sample</author>
+<title>Undeclared Entity.</title>
+<year>2024</year>
+</article>
+<inproceedings key="conf/scsample/Truncated24" mdate="2024-01-03">
+<author>Ada Sample 0002</author>
+<title>Truncated Mid-Rec

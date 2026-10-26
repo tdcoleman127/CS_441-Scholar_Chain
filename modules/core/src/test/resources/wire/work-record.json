@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "workId": "work:dblp:conf/kdd/CarberrySmith24",
+  "title": "A Sample Study of Collaboration Graphs",
+  "year": 2024,
+  "venueId": "venue:dblp:conf/kdd",
+  "externalIds": [
+    {
+      "namespace": "doi",
+      "value": "10.5555/sample.0001"
+    }
+  ],
+  "topicIds": [
+    "topic:openalex:T10001"
+  ],
+  "provenance": {
+    "sourceDataset": "dblp",
+    "sourceRecordId": "conf/kdd/CarberrySmith24",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

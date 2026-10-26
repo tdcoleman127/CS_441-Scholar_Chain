@@ -1,0 +1,8 @@
+R1 ALLOW [infra-engineer] python datasets/scripts/validate_datasets.py | 
+R2 ALLOW [infra-engineer] bash datasets/tests/run-tests.sh | 
+R3 ALLOW [hadoop-engineer] python -I datasets/scripts/validate_datasets.py --root /tmp/x | 
+R4 ALLOW [dataset-engineer] make fetch | 
+R5 ASK [dataset-engineer] ln -s datasets/scripts/fetch.sh /tmp/f.sh | 
+R6 ALLOW [infra-engineer] cp datasets/scripts/fetch.sh /tmp/g.sh | 
+R7 ALLOW [infra-engineer] bash /tmp/g.sh dblp --plan | 
+R8 ALLOW [infra-engineer] bash /tmp/g.sh dblp --full --dest /tmp/d | 

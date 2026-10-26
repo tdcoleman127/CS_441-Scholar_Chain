@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "venueId": "venue:dblp:conf/kdd",
+  "name": "Sample Conference on Knowledge Discovery",
+  "venueKind": "conference",
+  "provenance": {
+    "sourceDataset": "dblp",
+    "sourceRecordId": "conf/kdd",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

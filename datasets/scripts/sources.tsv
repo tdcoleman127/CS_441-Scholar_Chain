@@ -1,0 +1,18 @@
+# ScholarChain upstream artifact table for fetch.sh. Owner: dataset-engineer.
+# Tab-separated. Columns:
+#   dataset  artifact  tier  url  algo  checksum  est_bytes  filename
+# tier:      metadata (small; allowed by --metadata) or full (needs --full and --max-bytes)
+# algo:      sha256 | md5 | none
+# checksum:  the publisher's or a previously verified digest, or record-at-download, which
+#            stores a sha256 sidecar (<filename>.sha256) on first download for the manifest.
+# est_bytes: unsigned integer estimate taken from the cited source (see the manifest), or
+#            unknown. A full-tier row with an unknown estimate can never be downloaded.
+# Every URL here is cited in datasets/dataset-manifest.yaml with its verification date.
+dblp	dtd	metadata	https://dblp.org/xml/dblp.dtd	sha256	2d864498f9eef9298662df11e3874171ff24cd4a21ab5974f1369c90acdb1ef6	13134	dblp.dtd
+dblp	release-md5	metadata	https://drops.dagstuhl.de/storage/artifacts/dblp/xml/2026/dblp-2026-10-03.xml.gz.md5	none	record-at-download	1024	dblp-2026-10-03.xml.gz.md5
+dblp	release-xml	full	https://drops.dagstuhl.de/storage/artifacts/dblp/xml/2026/dblp-2026-10-03.xml.gz	md5	cbd329100ea1bbb2873fa2f6d414ea00	1030000000	dblp-2026-10-03.xml.gz
+openalex	license	metadata	https://openalex.s3.amazonaws.com/LICENSE.txt	none	record-at-download	65536	LICENSE.txt
+opencitations	index-csv-v8-filelist	metadata	https://api.figshare.com/v2/articles/24356626/versions/8	none	record-at-download	1048576	figshare-24356626-v8.json
+arxiv	identify	metadata	https://oaipmh.arxiv.org/oai?verb=Identify	none	record-at-download	65536	oai-identify.xml
+arxiv	metadata-xsd	metadata	https://oaipmh.arxiv.org/OAI/arXiv.xsd	none	record-at-download	65536	arXiv.xsd
+opencitations	index-csv-v8-shard-2026-09-01T15	full	https://ndownloader.figshare.com/files/68274988	md5	642bf5f9f06c925cfdd298af9f8484ef	180939784	2026-09-01T15_0-11.zip

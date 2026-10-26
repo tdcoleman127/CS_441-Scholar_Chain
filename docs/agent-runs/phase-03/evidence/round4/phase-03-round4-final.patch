@@ -1,0 +1,188 @@
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+index cfcb13c..d42a982 100755
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -6,7 +6,8 @@
+ #   KMS, EMR, ECS, and every other service); destructive database statements; non-Terraform IaC;
+ #   Bash writes to constitutional files by anyone except factory-engineer; forged test markers;
+ #   writes to human evidence; operational scripts run by the wrong agent or environment; dataset
+-#   scripts outside the section 7b map; and any non-evidence command from a read-only agent.
++#   scripts outside the section 7b map (including protected paths after normalization); and any
++#   non-evidence command from a read-only agent.
+ #   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts (section 12).
+ # The message names the legitimate path so a block becomes routing, not a retry loop.
+ # Fails closed: without Python or with unparseable input every command is blocked.
+@@ -656,13 +657,24 @@
+ # through a glob or variable operand; after a cd into a protected directory; by archive extraction;
+ # or by inline interpreter code. Where the target cannot be verified, it blocks (fail closed).
+ # 'git config' is a write for every caller except factory-engineer; only exact read forms pass.
++# Phase-03 Round 4 (side finding NF1): Windows 8.3 short names reach protected paths without naming
++# them ('CLAUDE~1/hooks/common.sh' is .claude/hooks/common.sh; 'GIT~1/config' is .git/config), and
++# MSYS bash, cp, tee, and native programs all resolve them. A '~<digit>' in the command therefore
++# counts as naming a protected path (HINT9). An operand or redirect target that contains '~' is
++# never literal (operand9), so it is blocked when it could reach a protected path: its directory is
++# itself non-literal, or it sits in the repository root or a protected directory. An operand in a
++# literal non-protected directory stays allowed ('cp a.txt /tmp/sc/b~1'). HINT9 is also read for
++# xargs/parallel, and SHORT9 by the inline-interpreter check (5), against the WHOLE command line:
++# a command that contains any '~<digit>' (for example HEAD~1) is blocked for every caller if it also
++# runs inline interpreter code ('git diff HEAD~1 | python -c ...') or a non-read-safe xargs target.
++SHORT9='~[0-9]'
+ if [ "$caller" = "factory-engineer" ]; then
+-  HINT9='agent-runs|human-gate|last-test-run'
++  HINT9="agent-runs|human-gate|last-test-run|$SHORT9"   # R4-SHORTNAME
+   PROTDIR9='^(\.|docs|docs/agent-runs(/.*)?)$'
+   PROTGLOB9="$PROTDIR9"
+   ROOT9="docs"   # protected names directly in the repository root (operand9 globs)
+ else
+-  HINT9='\.claude|claude\.|claude[*?[]|agent|\.mcp|mcp\.json|human-gate|last-test|\.git/|\.git$|gitconfig'
++  HINT9="\\.claude|claude\\.|claude[*?[]|agent|\\.mcp|mcp\\.json|human-gate|last-test|\\.git/|\\.git\$|gitconfig|$SHORT9"   # R4-SHORTNAME
+   PROTGLOB9='^(\.|\.claude(/.*)?|docs|docs/agent-runs(/.*)?|\.git(/.*)?)$'
+   PROTDIR9="$PROTGLOB9"
+   ROOT9="claude.md .mcp.json .claude docs .git .gitconfig"
+@@ -825,7 +837,7 @@
+             -c|-e|-p|-r|--eval|--print|-command|-encodedcommand|-c?*|-e?*)
+               # whole command line: the segmenter splits inline code at ( ) ;
+               if { [ "$caller" != "factory-engineer" ] && has "$cmd" "$PATH_ALT_CONST|$PATH_ALT_GITCFG"; } \
+-                 || has "$cmd" "$PATH_ALT_MARKER|$PATH_ALT_HUMAN_GATE" \
++                 || has "$cmd" "$PATH_ALT_MARKER|$PATH_ALT_HUMAN_GATE|$SHORT9" \
+                  || { [ "$caller" != "orchestrator" ] && has "$cmd" "$PATH_ALT_EVIDENCE"; }; then
+                 sc_block "inline $b code that names a protected path $MSG9_UNK"
+               fi
+@@ -916,6 +928,75 @@
+   if (( ncd != nok )); then DIRCHANGE=1; fi
+ fi
+ 
++# ds_prot_hit: print the first word of the whole command ($raw, original case) that resolves to a
++# protected repository path, or nothing. LIMIT (docs/agents.md section 7b, RR-10): the words are
++# fragments split at whitespace, quotes, and shell operators, not the words bash builds; bash joins
++# quoted parts and drops unquoted backslashes, and globs are not expanded, so '.cl'aude'/hooks/x',
++# '.cl\aude/hooks/x', 'docs/agent''-runs/x', and '.claud?/hooks/x' get past this check;
++# each word and each value after an '=' is normalized like sc_classify_path (backslashes become
++# slashes, MSYS drive paths, '.', '..', repeated slashes, case on Windows) and, separately, through
++# os.path.realpath, which also resolves Windows 8.3 short names (CLAUDE~1), trailing dots
++# ('.claude./x', stripped by native Windows programs such as curl.exe), symlinks, and junctions.
++# Either repository-relative result, lower-cased, is matched against: CLAUDE.md, docs/agents.md,
++# .mcp.json, .claude/**, .git/**, docs/agent-runs/**, and any human-gate.md. Fail closed: a word
++# under /proc/ (MSYS /proc/self/cwd is the working directory), a UNC or device path (//x, //?/),
++# a word with an 8.3 short-name form (~<digit>; realpath resolves only names that exist), or a word
++# that cannot be resolved is printed.
++ds_prot_hit() {
++  SC_TEXT="$raw" SC_ROOT="$(sc_repo_root)" SC_CWD="$(sc_field cwd)" PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
++import os, re
++def norm(p):
++    p = (p or "").replace("\\", "/")
++    if os.name == "nt":
++        m = re.match(r"^/(?:cygdrive/|mnt/)?([a-zA-Z])(?:/|$)(.*)$", p)
++        if m:
++            p = m.group(1) + ":/" + m.group(2)
++    return p
++def absn(p, base):
++    p = norm(p)
++    if not os.path.isabs(p):
++        p = os.path.join(base, p)
++    return os.path.normcase(os.path.normpath(os.path.abspath(p)))
++PROT = re.compile(r"^(claude\.md|docs/agents\.md|\.mcp\.json|\.claude|\.git|docs/agent-runs)(/|$)|(^|/)human-gate\.md$")
++def real(p):
++    return os.path.normcase(os.path.realpath(p))
++def hit(target, base):
++    try:
++        rel = os.path.relpath(target, base)
++    except ValueError:
++        return False
++    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
++        return False
++    rel = rel.replace(os.sep, "/").lower()
++    return rel != "." and bool(PROT.search(rel))
++root = absn(os.environ["SC_ROOT"], os.getcwd())
++cwd = absn(os.environ.get("SC_CWD") or os.environ["SC_ROOT"], root)
++root_r = real(root)
++cands = []
++for t in re.split(r"[\s\"\x27`;&|()<>]+", os.environ["SC_TEXT"]):
++    if not t:
++        continue
++    cands.append(t)
++    cands.extend(t.split("=")[1:])
++for c in cands:
++    if not c:
++        continue
++    n = c.replace("\\", "/")
++    if re.match(r"^/proc(/|$)", n, re.I) or n.startswith("//") or n.startswith("/??/") or re.search(r"~[0-9]", n):
++        print(c)
++        break
++    try:
++        a = absn(c, cwd)
++        found = hit(a, root) or hit(real(a), root_r)
++    except Exception:
++        print(c)
++        break
++    if found:
++        print(c)
++        break
++'
++}
++
+ # dataset_script_check <lower-case path below datasets/scripts/> <script arguments...>: the section 7b
+ # map. Called only when the executed path RESOLVES (cwd-relative, case-insensitive) into the
+ # repository's datasets/scripts/ directory, so a persistent cwd or a relative path cannot bypass it.
+@@ -933,6 +1014,17 @@
+   # human evidence, the test marker, git configuration) through --out, --dest, --root, or similar.
+   if has "$SEG" "($PATH_ALT_CONST|$PATH_ALT_LOCAL|$PATH_ALT_MARKER|$PATH_ALT_EVIDENCE|$PATH_ALT_HUMAN_GATE|$PATH_ALT_GITCFG|\.git/)"; then
+     sc_block "datasets/scripts/$name.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."
++  fi
++  # Phase-03 Round 4 (code review F1): the regex above sees only literal spellings in the current
++  # segment, so '.claude/./hooks/x', '.claude//hooks/x', 'datasets/../.claude/x', '.claude\hooks\x',
++  # 'CLAUDE~1/hooks/x', '.claude./hooks/x', '/proc/self/cwd/.claude/x', and absolute or case-variant
++  # paths would pass it. Every whitespace- and quote-split fragment of the whole command, and every
++  # value after '=' (--out=x, SCHOLARCHAIN_DATA_DIR=x), is resolved (ds_prot_hit) and compared with
++  # the protected paths. Quoting, backslash, and glob spellings are NOT covered (RR-10).
++  local hit
++  hit="$(ds_prot_hit)" || sc_block "could not resolve the paths in a command that runs datasets/scripts/$name.sh (fail closed)."
++  if [ -n "$hit" ]; then
++    sc_block "datasets/scripts/$name.sh is run in a command whose word '$hit' resolves to a protected path (constitutional files, .claude/**, docs/agent-runs/**, human-gate.md, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."   # R4-PROTNORM
+   fi
+   case "$name" in
+     fetch)
+diff --git a/docs/agents.md b/docs/agents.md
+index 2fe8c2a..853614e 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -57,7 +57,7 @@
+ 
+ Exactly one writer per path, with one ratified exception: the dependency-ledger row splits `project/Versions.scala` by verb, version values versus everything else (section 3, refinement 4). The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every Write or Edit to it is blocked until an amendment assigns one.
+ 
+-Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). It does not detect writes that a program makes internally without naming the path on the command line, or writes through symlinks.
++Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). Windows 8.3 short names (`CLAUDE~1` for `.claude`, `GIT~1` for `.git`) count as naming a protected path (rule R4-SHORTNAME). A write operand or redirect target that contains `~<digit>` is blocked when it could reach a protected path: its directory is itself a variable or glob, or it is in the repository root or a protected directory. An operand in a literal, unprotected directory stays allowed (`cp /tmp/sc/a.txt /tmp/sc/b~1`). The inline-interpreter check and the `xargs`/`parallel` check read the whole command line, so any command that contains `~<digit>` anywhere, including a revision such as `HEAD~1`, is blocked for every caller if it also runs inline interpreter code (`git diff HEAD~1 | python -c '...'`) or an `xargs`/`parallel` target that is not a read-only command. It does not detect writes that a program makes internally without naming the path on the command line, writes through symlinks, output options of programs it does not model, or paths that inline interpreter code builds at run time (residual RR-08, section 7b).
+ 
+ Ledger value check (guard-ownership.sh, `LEDGER_PATH` and `LEDGER_EDITOR`). An Edit by dependency-updater to `project/Versions.scala` passes only if three things hold. First, replacing every one-line double-quoted literal in `old_string` and `new_string` with `""` leaves identical text, so no `val`, name, comment, operator, or entry is added, removed, or changed. Second, every changed literal contains a digit before and after the edit. Third, the new literal matches `^[0-9A-Za-z][0-9A-Za-z._:@/-]*$` and contains neither `latest` nor `SNAPSHOT`. A backslash or an unbalanced quote fails closed, and Write, MultiEdit, and NotebookEdit are refused. Two things are not mechanical and rest on the role file plus code-reviewer: a Bash write to the ledger, and whether a well-formed value is the right one (for example a major bump, or a Hadoop or Spark value that EMR does not ship).
+ 
+@@ -173,7 +173,7 @@
+ | `validate-datasets.sh` | any agent | no | Offline and read-only |
+ | `record-sample-checksums.sh --check` | any agent | no | Verify only |
+ | `record-sample-checksums.sh` (write mode, no `--check`) | dataset-engineer | no | Rewrites `datasets/samples/SHA256SUMS` only |
+-| `sample-extract.sh` | dataset-engineer | no | Offline. Writes only its `--out` file |
++| `sample-extract.sh` | dataset-engineer | yes (settings.json has no allow rule for it) | Offline. Writes only its `--out` file |
+ | `fetch.sh` with `--plan` (the default) or `--metadata` | dataset-engineer | ask | Uses the network. The script caps metadata downloads at 50 MiB |
+ | `fetch.sh --full` | nobody: human-invoked only, until a ratified amendment and a phase human gate approve a size bound | n/a | blocked |
+ | `fetch-by-id.sh` | dataset-engineer | ask | Uses the network. The script caps runs at 500 IDs, 5 arXiv pages, and 5 MiB per response |
+@@ -183,8 +183,20 @@
+ Additional rules:
+ - The ask prompt is enforced in two places. settings.json has ask rules for the repository-relative forms. guard-dangerous.sh also returns a permission decision of `ask` for any dataset-engineer command that names `fetch.sh` or `fetch-by-id.sh`, so absolute-path and other forms prompt too.
+ - A dataset-script command that also names a protected path is blocked. Protected paths are the constitutional files, `docs/agent-runs/**`, `human-gate.md`, `.claude/.last-test-run`, and `.git/`.
++- Protected paths after normalization (rule R4-PROTNORM). When the guard sees a dataset script run, it splits the whole command into fragments at whitespace, quote characters, and shell operators. These fragments are not the words bash builds (see RR-10). Each fragment, and each value after `=` in a fragment (`--out=x`, `SCHOLARCHAIN_DATA_DIR=x`), is resolved against the working directory: `.`, `..`, repeated slashes, backslashes, absolute and drive paths, and case, and also through the file system (8.3 short names, trailing dots, symlinks, junctions). The command is blocked if any word resolves to `CLAUDE.md`, `docs/agents.md`, `.mcp.json`, `.claude/**`, `.git/**`, `docs/agent-runs/**`, or any `human-gate.md`. Words under `/proc/` (MSYS `/proc/self/cwd` is the working directory), UNC or device paths (`//host`, `//?/`), and words containing `~<digit>` are blocked without resolution (fail closed). So `--out .claude/./hooks/common.sh`, `--out datasets/../.claude/hooks/x`, `--dest docs//agent-runs`, `--dest .claude./hooks`, and `SCHOLARCHAIN_DATA_DIR=CLAUDE~1/hooks` are blocked. Spellings that bash rebuilds from quotes, backslashes, or globs are not (RR-10).
++- Prompts. `sample-extract.sh`, `fetch.sh`, and `fetch-by-id.sh` have no settings.json allow rule, so every run of them through Claude asks the human, whatever form the command takes. Only `validate-datasets.sh` and `record-sample-checksums.sh` (repository-relative forms) are auto-allowed.
+ - The read-only fence (code-reviewer) still allows only `bash -n` on these scripts.
+-- The guard does not check `datasets/scripts/validate_datasets.py`, `datasets/tests/run-tests.sh`, or scripts that another script calls internally. Those rely on the role file and review (section 4, enforcement limits).
++- Residual risks. The guard does not fence the bypass classes below. Each relies on the permission prompt (none of these forms is on the allow list), the role files, and code-reviewer detection. Each has an ID so it can be decided separately:
++  - RR-01 (phase-03 Round 2 review, item a): a variable supplies an argument, for example `F=--full; bash datasets/scripts/fetch.sh dblp $F`.
++  - RR-02 (Round 2, item b): a launcher supplies the arguments at run time, for example `xargs datasets/scripts/fetch.sh dblp < args.txt`.
++  - RR-03 (Round 2, item c): a protected destination built at run time (`X=docs/agent-ru; ... --out ${X}ns/x`). An unquoted literal assignment such as `D=docs/agent-runs` or `SCHOLARCHAIN_DATA_DIR=docs/agent-runs` is blocked by R4-PROTNORM. A quoted, backslash, or glob spelling of the same value is not (RR-10).
++  - RR-04 (Round 3 review F2): a launcher starts a program chosen at run time: `find datasets/scripts -name 'fetch.s?' -exec env {} ...`, `xargs -I % % ...`, `xargs -a args.txt env`.
++  - RR-05 (Round 3 review F3): forms the command parser does not follow: `coproc`, `trap '<command>' EXIT`, `flock <lock> <script>`, `alias`, and similar. The settings.json deny rule `Bash(*fetch.sh *--full*)` is case-sensitive, so `Fetch.sh` escapes it. The guard lower-cases commands, but only where its parser reaches the script.
++  - RR-06 (Round 3 review F5): a renamed copy run without `.sh` or outside `scripts/`, for example `/tmp/sc/g dblp --full`.
++  - RR-07 (Round 2 residual R6-R8): copying, linking, or renaming a dataset script and running the copy, for example `cp datasets/scripts/fetch.sh /tmp/g.sh; bash /tmp/g.sh dblp --full`.
++  - RR-08 (Round 4 finding NF2): output options of programs the guard does not model, such as `curl -o .claude/hooks/x URL`, `wget -O`, and `sort -o`, and paths that inline interpreter code builds at run time or spells with a trailing dot (`.claude./hooks`, which native Windows programs normalize).
++  - RR-09: `datasets/scripts/validate_datasets.py`, `datasets/tests/run-tests.sh`, scripts that another script calls internally, `make`, and script files written with the Write tool in the scratchpad or a temp directory.
++  - RR-10 (Round 4 review F1): lexical spellings of a protected path get past R4-PROTNORM. The rule splits the command at quote characters and treats `\` as a path separator, but bash joins quoted parts into one word and drops unquoted backslashes. The rule also does not expand globs. Examples: `--out .cl'aude'/hooks/common.sh`, `--out .cl\aude/hooks/common.sh`, `--out docs/agent''-runs/...`, `SCHOLARCHAIN_DATA_DIR=docs/agent''-runs ...`, and `--out .claud?/hooks/...`. Only the permission prompt covers this: `sample-extract.sh`, `fetch.sh`, and `fetch-by-id.sh` have no allow rule, so the human is asked before every run. The human should deny any such prompt whose path arguments (`--out`, `--dest`, `--root`, `--input`, `--dois`, `--ids`, `--sources`, or a `SCHOLARCHAIN_DATA_DIR=` value) contain a quote, a backslash, or a glob character (`*`, `?`, `[`).
+ 
+ ## 8. Escalation policy
+ 

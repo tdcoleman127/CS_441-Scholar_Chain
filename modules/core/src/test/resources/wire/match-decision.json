@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "decisionId": "match:v1:cab023beede9af30571cf8254a63d41fc6ea246e01bb9a0463b8c9d1f640023f",
+  "mentionId": "mention:v1:6b7f517df8cd9fa35a83284f23aab20ccfc256d34cff069b741416b9af94779b",
+  "candidateResearcherId": "researcher:orcid:0000-0002-1825-0097",
+  "outcome": "match",
+  "decider": "rule",
+  "confidence": 0.99,
+  "policyVersion": "er-policy-v1",
+  "reasonCodes": [
+    "orcid-exact"
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "er-decision-0001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

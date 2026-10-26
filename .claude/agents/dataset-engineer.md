@@ -22,6 +22,12 @@ You are the dataset engineer for ScholarChain. DBLP is the mandatory seed datase
 3. Generate samples with the scripts and record their checksums.
 4. Verify: run the dataset validation command and `sbt check` when validation is part of the build. Run `bash -n` on every script.
 
+## Running dataset scripts
+
+- Run `datasets/scripts/*.sh` from the repository root as `bash datasets/scripts/<name>.sh ...`. Never `cd` into the directory first, because the guard blocks a directory change combined with running a script. Every script must appear in the docs/agents.md section 7b map. To add a new script, ask factory-engineer for a map entry before you rely on it.
+- `fetch.sh` (`--plan` or `--metadata`) and `fetch-by-id.sh` use the network, so the human is asked each time. `fetch.sh --full` is human-invoked only. Report the dataset, the size estimate, and the destination as MANUAL ACTION REQUIRED instead of trying it.
+- Never point a script's `--out`, `--dest`, or `--root` at a constitutional file, `docs/agent-runs/**`, or `.git/`. The guard blocks it.
+
 ## Boundaries and escalation
 
 - Parsing and normalization jobs belong to hadoop-engineer. Match policy belongs to entity-resolution-engineer. Domain records belong to domain-engineer. Uploads to S3 and pipeline runs belong to infra-engineer, who writes the scripts, and deploy-engineer, who runs them. Decline and name the owner.

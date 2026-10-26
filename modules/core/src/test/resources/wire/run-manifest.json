@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "runId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875",
+  "pipelineName": "hadoop-dblp-parse",
+  "codeVersion": "git-0000000000000000000000000000000000000000",
+  "configFingerprint": "sha256:a794d3c7b5d24d13a48185120d6ea7af603dd554f7e97629a5cfed12f1e0dc12",
+  "inputs": [
+    {
+      "sourceDataset": "dblp",
+      "snapshotId": "dblp-sample-2026-10",
+      "checksum": "sha256:2433a66eb1c178636bdf5f128e9ccb39de68da42559ad53b2e6a17f23cd2bf68"
+    },
+    {
+      "sourceDataset": "openalex",
+      "snapshotId": "openalex-sample-2026-10",
+      "checksum": "sha256:6b40456a6b0d551ed93688bb28b1dc9f03292423bfe54c2b89d8fbf589ae5bdf"
+    }
+  ],
+  "attempt": 1
+}

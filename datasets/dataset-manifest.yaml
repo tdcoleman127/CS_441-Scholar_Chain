@@ -1,0 +1,994 @@
+# ScholarChain dataset manifest. Owner: dataset-engineer. Gate: manifest validation.
+# Validate with: bash datasets/scripts/validate-datasets.sh
+#
+# Conventions
+# - Facts are cited with the official URL they were read from and the date they were read
+#   (source.evidence, license.evidence_url, snapshot.evidence_url, size_estimate.evidence_url).
+#   Anything that could not be verified says "unknown" or "unverified" and is listed in
+#   open_questions.
+# - S3 prefixes are templates. ${raw_bucket} and ${sample_bucket} are resolved from configuration
+#   (domain-engineer's configuration loader). No bucket name appears here.
+# - Upstream checksums are the publisher's own digest when one exists, otherwise
+#   "to be recorded at download" (fetch.sh writes a sha256 sidecar on first download).
+# - Sample checksums are sha256 over raw bytes and must match datasets/samples/SHA256SUMS.
+# - source_type values are the wire names of SourceType in modules/core.
+# - linkage_keys[].namespace is the exact IdNamespace wire name in modules/core, or "none" with a
+#   namespace_note when core has no namespace for that key.
+# - human_decisions are recorded verbatim in meaning, each with recorded_as
+#   "human decision, phase 03 human gate, 2026-10-18". Datasets cite them in decision_refs.
+#   open_questions carry a status (open | closed | deferred); a closed or deferred question names
+#   the decision that settled it, or (closed only) resolution owner-fix with resolved_by and the
+#   dated command evidence dataset-engineer observed.
+# - A dataset with a full-tier row in datasets/scripts/sources.tsv records, in
+#   confirmation_download, the byte bound (max_bytes) the human passes to fetch.sh --full, the
+#   human decision that approved it (approved_by), and invoked_by: human. fetch.sh --full is
+#   human-invoked only: docs/agents.md section 7b blocks it for every agent.
+manifest_version: 1
+owner: dataset-engineer
+phase: "03"
+verified_on: "2026-10-18"
+s3_prefix_placeholders:
+  raw_bucket: "Raw upstream snapshots, read by the Hadoop ingestion jobs. Name comes from configuration."
+  sample_bucket: "Committed samples mirrored for EMR smoke runs. Name comes from configuration."
+sample_policy:
+  max_bytes_per_file: 65536
+  content: >-
+    Committed samples are synthetic records authored for ScholarChain and dedicated to the public
+    domain (CC0-1.0), written in each source's exact wire format. Exception: dblp.dtd, a verbatim
+    upstream file released under CC0 1.0 by dblp. All people, works, and identifiers are
+    fictional, except Josiah Carberry, the documented fictitious demonstration person of ORCID and
+    Crossref (ORCID 0000-0002-1825-0097). DOIs use the Crossref test-account prefix 10.5555.
+    Synthetic OpenAlex, OMID, PMID, and arXiv identifiers may coincide with real identifiers in
+    those namespaces. Never dereference them, and never load sample records into production
+    stores.
+  shared_cross_source_records:
+    - doi: "10.5555/sc441.0001"
+      appears_in: ["dblp (ee, two records)", "crossref", "openalex (uppercase)", "opencitations", "arxiv (2401.99901)"]
+    - doi: "10.5555/sc441.0002"
+      appears_in: ["dblp", "crossref (uppercase)", "openalex", "opencitations"]
+    - doi: "10.5555/sc441.0003"
+      appears_in: ["dblp (24 authors)", "crossref (24 authors)", "opencitations"]
+
+# Decisions the human architect made on 2026-10-18 in the orchestrator session, relayed to
+# dataset-engineer in the phase 03 repair work order. They are to be written into
+# docs/agent-runs/phase-03/human-gate.md by the human (that file is human-only).
+human_decisions:
+  - id: HD-03-01
+    date: "2026-10-18"
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    topic: "ORCID Public Data File"
+    decision: excluded
+    text: >-
+      The ORCID Public Data File is excluded. ORCID iDs are used only when DBLP, OpenAlex, or
+      Crossref already carry them. No bulk personal-profile data is ingested.
+    applies_to: [orcid, dblp, openalex, crossref]
+    closes: [Q-orcid-public-data-file]
+  - id: HD-03-02
+    date: "2026-10-18"
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    topic: "Affiliations"
+    decision: institution-level-only-at-runtime
+    text: >-
+      Only resolved institution links (ROR or OpenAlex institution IDs) with a year may reach
+      runtime stores. Raw affiliation strings (OpenAlex raw_affiliation_strings, Crossref
+      affiliation names, DBLP note type="affiliation", and arXiv author affiliation) may be used
+      in batch only, for example as entity-resolution features. They must be dropped before
+      Neptune, DynamoDB, S3 Vectors, and any runtime-facing export.
+    applies_to: [dblp, openalex, crossref, arxiv]
+    closes: [Q-affiliations-runtime]
+  - id: HD-03-03
+    date: "2026-10-18"
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    topic: "Crossref access path"
+    decision: rest-api-by-doi-only
+    text: >-
+      No Crossref requester-pays (or torrent) bulk public data file. Crossref is accessed only
+      through the bounded REST API, one DOI at a time.
+    applies_to: [crossref]
+    closes: [Q-crossref-public-data-file]
+  - id: HD-03-04
+    date: "2026-10-18"
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    topic: "Confirmation downloads"
+    decision: approved-in-principle-not-run
+    text: >-
+      Approved in principle for a later phase: one small bounded fetch per selected source (a few
+      hundred records or one shard) to confirm the fields marked unverified. Approved but not yet
+      run. No download is run in phase 03.
+    applies_to: [dblp, openalex, crossref, opencitations, arxiv]
+    closes: []
+  - id: HD-03-05
+    date: "2026-10-18"
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    topic: "Semantic Scholar and remaining open items"
+    decision: semantic-scholar-stays-excluded
+    text: >-
+      Semantic Scholar stays excluded. Its legal review question stays open as deferred. The
+      OpenAlex snapshot pin, the OpenCitations snapshot date, and DBLP's size stay open.
+    applies_to: [semantic-scholar, dblp, openalex, opencitations]
+    closes: []
+    defers: [Q-semantic-scholar-license-review]
+  - id: HD-03-06
+    date: "2026-10-18"
+    date_note: "Round 2 of docs/agent-runs/phase-03/human-gate.md states no date. 2026-10-18 is the date of the phase 03 Round 2 work order that relayed it to dataset-engineer."
+    recorded_as: "human decision, phase 03 human gate, 2026-10-18"
+    source: "docs/agent-runs/phase-03/human-gate.md, Round 2, Ratification"
+    topic: "DBLP confirmation-download limit"
+    decision: dblp-confirmation-bound-raised
+    quote: "DBLP test download limit can be increased for now"
+    text: >-
+      The human allows the dblp confirmation-download limit to go above HD-03-04's "a few
+      hundred records or one shard", for now. dataset-engineer set the bound to 1200000000 bytes
+      (dblp confirmation_download.max_bytes), which covers the single 1.03 GB release file. The
+      download stays human-invoked only: the same Round 2 ratification blocks full downloads for
+      every agent (quote: "full downloads are blocked for all agents"; docs/agents.md section 7b).
+      "For now" makes the bound provisional. A later human gate may lower or withdraw it.
+    applies_to: [dblp]
+    closes: [Q-dblp-confirmation-bound]
+
+datasets:
+  # ---------------------------------------------------------------------------------------
+  - id: dblp
+    source_type: dblp
+    role: primary
+    status: selected
+    name: "dblp computer science bibliography: XML dump"
+    source:
+      publisher: "Schloss Dagstuhl - Leibniz Center for Informatics (dblp team)"
+      homepage: "https://dblp.org/"
+      download_urls:
+        pinned_release: "https://drops.dagstuhl.de/storage/artifacts/dblp/xml/2026/dblp-2026-10-03.xml.gz"
+        pinned_release_md5: "https://drops.dagstuhl.de/storage/artifacts/dblp/xml/2026/dblp-2026-10-03.xml.gz.md5"
+        dtd: "https://dblp.org/xml/dblp.dtd"
+        rolling_daily: "https://dblp.org/xml/dblp.xml.gz"
+      evidence:
+        - url: "https://drops.dagstuhl.de/entities/artifact/10.4230/dblp.xml.2026-10-03"
+          retrieved: "2026-10-18"
+          fact: "File dblp-2026-10-03.xml.gz, 1.03 GB, MD5 cbd329100ea1bbb2873fa2f6d414ea00, CC0 1.0, release date 2026-10-03, with download and .md5 URLs."
+        - url: "https://drops.dagstuhl.de/entities/collection/10.4230/dblp.xml"
+          retrieved: "2026-10-18"
+          fact: "Monthly snapshot releases. Latest is October 2026, DOI 10.4230/dblp.xml.2026-10-03. Collection license CC0 v1.0."
+        - url: "https://dblp.org/xml/"
+          retrieved: "2026-10-18"
+          fact: "Rolling dblp.xml.gz (1.0G, 2026-10-18) with dblp.xml.gz.md5. dblp.dtd 13K. https://dblp.org/xml/release/ redirects to the Dagstuhl collection."
+        - url: "https://dblp.org/xml/dblp.dtd"
+          retrieved: "2026-10-18"
+          fact: "DTD header states the CC0 1.0 license, DTD date May 10, 2023. Record elements, attributes, and 68 character entities."
+        - url: "https://dblp.org/xml/docu/dblpxml.pdf"
+          retrieved: "2026-10-18"
+          fact: "ISO-8859-1 header but pure ASCII content with entities. Homonyms get a space plus a four-digit number. Person records are www homepages/ records."
+    license:
+      name: "CC0-1.0"
+      url: "https://creativecommons.org/publicdomain/zero/1.0/legalcode"
+      evidence_url: "https://dblp.org/xml/dblp.dtd"
+      secondary_evidence_url: "https://dblp.org/xml/README.txt"
+      attribution: "Not required. dblp asks for a link: 'we are always happy if you provide a link to us as the source of the data' (dblp.dtd header). ScholarChain cites dblp and the release DOI 10.4230/dblp.xml.2026-10-03."
+      redistribution: "Permitted for any purpose, including commercial use, without permission (CC0 1.0). README.txt notes that ODC-BY 1.0 was a secondary license and asks users to move to CC0."
+    snapshot:
+      version: "dblp-2026-10-03 (monthly XML release)"
+      date: "2026-10-03"
+      doi: "10.4230/dblp.xml.2026-10-03"
+      evidence_url: "https://drops.dagstuhl.de/entities/artifact/10.4230/dblp.xml.2026-10-03"
+      dtd_version: "May 10, 2023 (header of dblp.dtd)"
+    format: "gzip-compressed XML, one <dblp> root, declared ISO-8859-1, ASCII bytes with DTD entities; DTD required for parsing"
+    size_estimate:
+      compressed_bytes_approx: 1030000000
+      uncompressed_bytes: "unknown"
+      records: "unknown"
+      text: "1.03 GB compressed (publisher landing page). Uncompressed size and record count not stated by the publisher. Open question Q-dblp-size (kept open by HD-03-05)."
+      evidence_url: "https://drops.dagstuhl.de/entities/artifact/10.4230/dblp.xml.2026-10-03"
+    s3_prefixes:
+      raw: "s3://${raw_bucket}/raw/dblp/snapshot=2026-10-03/"
+      sample: "s3://${sample_bucket}/samples/dblp/manifest_version=1/"
+    checksums:
+      upstream:
+        - file: "dblp-2026-10-03.xml.gz"
+          algorithm: md5
+          value: "cbd329100ea1bbb2873fa2f6d414ea00"
+          evidence_url: "https://drops.dagstuhl.de/entities/artifact/10.4230/dblp.xml.2026-10-03"
+        - file: "dblp.dtd"
+          algorithm: sha256
+          value: "2d864498f9eef9298662df11e3874171ff24cd4a21ab5974f1369c90acdb1ef6"
+          evidence_url: "https://dblp.org/xml/dblp.dtd"
+          note: "Computed by dataset-engineer over the bytes retrieved on 2026-10-18 (13134 bytes). dblp publishes no checksum for the DTD."
+      samples:
+        - path: "datasets/samples/dblp/dblp-sample.xml"
+          sha256: "e8113ccc7e103fc9cb825cc79445722d67046660669e23676fa922fa535be76a"
+          bytes: 4561
+        - path: "datasets/samples/dblp/dblp-malformed.xml"
+          sha256: "248e5866fa03e6eff42b613dfecdf5c02872e7ace69b5e3651505e8bfd64892a"
+          bytes: 937
+        - path: "datasets/samples/dblp/dblp.dtd"
+          sha256: "2d864498f9eef9298662df11e3874171ff24cd4a21ab5974f1369c90acdb1ef6"
+          bytes: 13134
+    subset_rule: >-
+      Seed subset for bounded runs: records whose key starts with one of the configured venue
+      key prefixes (for example conf/kdd/ or journals/tkde/), with year inside the configured
+      graph window. Plus every www homepages/ person record that names an author of a kept
+      record. The prefixes and window are configuration, not constants. Extract with
+      sample-extract.sh dblp-xml after a full, checksum-verified download. The full corpus is
+      ingested only after a human approves the run.
+    schema: "datasets/schemas/dblp.md"
+    linkage_keys:
+      - key: dblp_key
+        namespace: dblp
+        field: "record/@key"
+      - key: doi
+        namespace: doi
+        field: "ee (https://doi.org/<doi>), lowercased"
+      - key: arxiv_id
+        namespace: arxiv
+        field: "ee (https://arxiv.org/abs/<id>) on CoRR records"
+      - key: orcid
+        namespace: orcid
+        field: "author/@orcid, editor/@orcid (used as carried by dblp, HD-03-01)"
+      - key: dblp_person_id
+        namespace: none
+        namespace_note: "No core namespace, by design (settled by domain-engineer in phase 03; see Q-linkage-keys-without-core-namespace). Core's Researcher ID kind takes no namespace. A dblp person ID enters core as a source record ID (source_dataset dblp) and, when entity resolution picks it as the cluster anchor, through StableIds.scholarChainResearcherId(1, dblp, <person id>) = researcher:sc1:H(...). Choosing the anchor is entity-resolution policy."
+        field: "www/@key without the homepages/ prefix"
+    update_method: >-
+      Monthly. A new dblp-YYYY-MM-DD release appears in the Dagstuhl collection
+      (https://drops.dagstuhl.de/entities/collection/10.4230/dblp.xml). Add a new sources.tsv
+      row with the published MD5 and a new snapshot= prefix. Never overwrite a previous
+      snapshot prefix. The rolling daily dblp.xml.gz is not used for pipeline runs because its
+      MD5 changes daily.
+    limitations:
+      - "No DOI element: DOIs come only from ee URLs, and many records have none."
+      - "Homonym suffixes cover only the persons dblp has split. Unsuffixed names may still be several people."
+      - "The JDK SAX parser has an entity-expansion limit that the full dump reaches (dblpxml.pdf)."
+      - "Several dblp.org pages (FAQ, search API) were behind bot protection (Anubis) on 2026-10-18. fetch.sh may be blocked on dblp.org. The Dagstuhl release URLs were reachable."
+      - "Samples are checksummed byte-exact. build-engineer's .gitattributes rule 'datasets/samples/** -text -eol' stops git from converting their line endings (Q-line-endings, closed). The rule protects checkouts only once .gitattributes is committed with or before the samples."
+    privacy_notes:
+      - "Contains names of real people, and ORCID iDs where dblp has them. Both are public bibliographic data under CC0."
+      - "ORCID iDs are used only as dblp carries them (author/@orcid, editor/@orcid). No ORCID registry or profile data is fetched to enrich them (HD-03-01, human decision, phase 03 human gate, 2026-10-18)."
+      - "Affiliations, institution-level only at runtime (HD-03-02, human decision, phase 03 human gate, 2026-10-18): raw affiliation strings in www person records (note type=\"affiliation\") may be used in batch only, for example as entity-resolution features, and are dropped before Neptune, DynamoDB, S3 Vectors, and any runtime-facing export. dblp carries no resolved institution IDs, so no dblp affiliation data reaches runtime."
+      - "www person records can also carry homepage URLs. ScholarChain keeps only names, ORCID iDs, and person IDs needed for linkage."
+      - "Committed samples are fictional and contain no personal data."
+    decision_refs: [HD-03-01, HD-03-02, HD-03-04, HD-03-05, HD-03-06]
+    affiliation_handling:
+      decision: HD-03-02
+      batch_only_fields:
+        - "www/note[@type='affiliation'] (raw affiliation string)"
+      runtime_allowed_fields: []
+      runtime_allowed_note: "dblp has no resolved institution IDs. Nothing affiliation-related reaches runtime from dblp."
+      drop_before: [neptune, dynamodb, s3-vectors, runtime-export]
+    confirmation_download:
+      decision: HD-03-04
+      status: approved-in-principle-not-run
+      approved_by: HD-03-06
+      invoked_by: human
+      max_bytes: 1200000000
+      bound: >-
+        1200000000 bytes (1.2 GB) for the single release file dblp-2026-10-03.xml.gz, the only
+        full-tier dblp row in sources.tsv (estimate 1030000000). dblp publishes no smaller
+        official artifact, so this confirmation download is the whole release. It is not a
+        pipeline run: ingesting the full corpus on EMR still needs its own human approval.
+      bound_justification: >-
+        The publisher page states "1.03 GB" without saying whether GB is decimal or binary. The
+        worst case is 1.035 GiB (1.03 rounded half-up, binary units) = 1111322788 bytes. A
+        decimal reading gives less than 1035000000 bytes. 1200000000 covers the worst case with
+        about 8 percent headroom. The release-md5 sidecar is a metadata-tier row (estimate 1024
+        bytes) fetched by fetch.sh --metadata under that mode's own 10 MiB default bound, not by
+        --full. Even counted together, both files stay under 1200000000. curl --max-filesize
+        enforces the bound on the actual bytes, and fetch.sh verifies the published MD5
+        cbd329100ea1bbb2873fa2f6d414ea00 before keeping the file.
+      human_command: "bash datasets/scripts/fetch.sh dblp --full --max-bytes 1200000000 --dest \"$SCHOLARCHAIN_DATA_DIR\""
+      human_only_note: >-
+        Human-invoked only. docs/agents.md section 7b blocks fetch.sh --full for every agent
+        (ratified in the phase 03 Round 2 human gate). This bound is the value the human passes
+        as --max-bytes. fetch.sh has no hard byte ceiling for --full that would refuse it, and the
+        default stays the no-network plan mode. The per-file curl time budget defaults to
+        max(600 s, max-bytes at 1 MiB/s) = 1145 s for this bound. On a slower link, set
+        SC_CURL_MAX_TIME.
+      confirms:
+        - "ee URL forms in the live dump (doi.org, arxiv.org/abs)"
+        - "CoRR key pattern journals/corr/abs-YYMM-NNNNN and publtype=\"informal\""
+        - "uncompressed size and record count"
+    validation_commands:
+      - "bash datasets/scripts/validate-datasets.sh"
+      - "bash datasets/scripts/fetch.sh dblp --plan"
+      - "bash datasets/scripts/fetch.sh dblp --metadata --dest \"$SCHOLARCHAIN_DATA_DIR\""
+      - "md5sum -c dblp-2026-10-03.xml.gz.md5   # after an approved --full download"
+    samples:
+      - path: "datasets/samples/dblp/dblp-sample.xml"
+        format: xml
+        well_formed: true
+        record_element: "*"
+        records: 10
+        malformed_records: 1
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18 in the dblp XML wire format (ASCII with DTD entities)."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "homonym names: Ada Sample, Ada Sample 0001, Ada Sample 0002, Ada Sample 0003"
+          - "Unicode through symbolic entities (&uuml; &euml; &aacute; &ntilde; &oacute; &oslash;) and numeric references (&#321; &#7877; &#7883; &#7851;)"
+          - "same work as conference and CoRR record (DOI 10.5555/sc441.0001, arXiv 2401.99901)"
+          - "24-author article"
+          - "missing year and ee"
+          - "record without the REQUIRED key and with year 20x4 (well-formed, invalid against the DTD)"
+          - "title markup (i, sub)"
+          - "ORCID attribute on author"
+          - "person records with alias names and a crossref-only alias record"
+      - path: "datasets/samples/dblp/dblp-malformed.xml"
+        format: xml
+        well_formed: false
+        record_element: "*"
+        records: 3
+        malformed_records: 2
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18. Not well-formed by design."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "undeclared entity &notdeclared;"
+          - "truncated final record (simulated partial download)"
+      - path: "datasets/samples/dblp/dblp.dtd"
+        format: dtd
+        records: 0
+        malformed_records: 0
+        provenance: "Verbatim copy of https://dblp.org/xml/dblp.dtd, retrieved 2026-10-18 (13134 bytes). Needed to parse the dblp samples."
+        license: "CC0-1.0 (stated in the file header by dblp)"
+        edge_cases: []
+
+  # ---------------------------------------------------------------------------------------
+  - id: openalex
+    source_type: openalex
+    role: enrichment
+    status: selected
+    name: "OpenAlex snapshot: works entity"
+    selection_reason: "CC0. Richest linkage: DOI, ORCID, OpenAlex author and institution IDs, affiliations, and referenced works. Cross-checks DBLP author mentions and adds affiliations."
+    source:
+      publisher: "OurResearch (OpenAlex)"
+      homepage: "https://openalex.org/"
+      download_urls:
+        snapshot_bucket: "s3://openalex/ (public, --no-sign-request), JSON Lines under data/jsonl/"
+        license_file: "https://openalex.s3.amazonaws.com/LICENSE.txt"
+        api: "https://api.openalex.org/works/doi:<doi>"
+      evidence:
+        - url: "https://help.openalex.org/download-all-data/openalex-snapshot"
+          retrieved: "2026-10-18"
+          fact: "s3://openalex/, no account needed. JSONL (gz) and Parquet copies. September 2026 release about 626M records, JSONL about 745 GB compressed (works about 615 GB). Quarterly public snapshot. Manifests carry record_count and content_length. updated_date= partitions, up to 400,000 records per part. deleted_ids.csv.gz."
+        - url: "https://openalex.s3.amazonaws.com/LICENSE.txt"
+          retrieved: "2026-10-18"
+          fact: "Bucket-root license file is the CC0 1.0 Universal text."
+        - url: "https://help.openalex.org/hc/en-us/articles/24397762024087-Pricing"
+          retrieved: "2026-10-18"
+          fact: "Data released under CC0. Free account API key gives $1 of usage per day. Full dataset openly downloadable. Daily sync and PDF sync are paid."
+        - url: "https://help.openalex.org/data/works/attributes/"
+          retrieved: "2026-10-18"
+          fact: "Work fields id, doi, ids, publication_year, title/display_name, authorships, type, referenced_works, updated_date."
+    license:
+      name: "CC0-1.0"
+      url: "https://creativecommons.org/publicdomain/zero/1.0/"
+      evidence_url: "https://openalex.s3.amazonaws.com/LICENSE.txt"
+      attribution: "Not required under CC0. ScholarChain cites OpenAlex and the snapshot release in reports."
+      redistribution: "Permitted without restriction (CC0; 'no personal use only carve-out', per the pricing page)."
+    snapshot:
+      version: "unknown: pin at download from the bucket's release notes and manifest. The documentation describes the September 2026 release. Open question Q-openalex-snapshot-pin (kept open by HD-03-05)."
+      date: "unknown (the documentation describes the September 2026 release; public releases are quarterly, on the second Wednesday of January, April, July, and October)"
+      evidence_url: "https://help.openalex.org/download-all-data/openalex-snapshot"
+    format: "gzip JSON Lines, one work per line, partitioned updated_date=YYYY-MM-DD/part_NNNN.gz, with per-entity and combined manifest.json"
+    size_estimate:
+      compressed_bytes_approx: 615000000000
+      text: "Works about 615 GB compressed JSONL (all entities about 745 GB; Parquet about 770 GB) for the September 2026 release. Decompressed: 'several terabytes'."
+      evidence_url: "https://help.openalex.org/download-all-data/openalex-snapshot"
+    s3_prefixes:
+      raw: "s3://${raw_bucket}/raw/openalex/release=${openalex_release}/works/"
+      subset: "s3://${raw_bucket}/raw/openalex/subset/dblp_snapshot=2026-10-03/"
+      sample: "s3://${sample_bucket}/samples/openalex/manifest_version=1/"
+    checksums:
+      upstream:
+        - file: "data/jsonl/works/**/part_*.gz"
+          algorithm: none
+          value: "to be recorded at download"
+          evidence_url: "https://help.openalex.org/download-all-data/openalex-snapshot"
+          note: "OpenAlex publishes record_count and content_length per file, not checksums. Verify both against manifest.json and record sha256 at download."
+      samples:
+        - path: "datasets/samples/openalex/openalex-works-sample.jsonl"
+          sha256: "b55b9e82ed029cb3a4e65d790a815769514fc0d29ad496a73ceb16e887fe78f6"
+          bytes: 3005
+    subset_rule: >-
+      Bounded default: API lookups for the DOIs found in the DBLP seed subset, through
+      fetch-by-id.sh openalex with max-ids 25 by default and a hard cap of 500. Full works
+      snapshot (about 615 GB): only through an S3-to-S3 copy job inside AWS. infra-engineer
+      writes it and deploy-engineer runs it after a human approves the cost and size. It is
+      never downloaded to a workstation.
+    schema: "datasets/schemas/openalex.md"
+    linkage_keys:
+      - key: doi
+        namespace: doi
+        field: "doi (strip https://doi.org/, lowercase)"
+      - key: openalex_work_id
+        namespace: openalex
+        field: "id"
+      - key: openalex_author_id
+        namespace: openalex
+        namespace_note: "Settled by domain-engineer in phase 03 (Q-linkage-keys-without-core-namespace). The openalex namespace exists in core for work, venue, institution, and topic IDs, but core's Researcher ID kind takes no namespace. An OpenAlex author ID is a source record ID and entity-resolution evidence. When entity resolution picks it as the cluster anchor, it enters through StableIds.scholarChainResearcherId(1, openalex, <author id>) = researcher:sc1:H(...)."
+        field: "authorships[].author.id (unverified subfield name)"
+      - key: orcid
+        namespace: orcid
+        field: "authorships[].author.orcid (unverified subfield name; used as carried, HD-03-01)"
+      - key: pmid
+        namespace: pmid
+        namespace_note: "IdNamespace.Pmid (wire name pmid) is present in modules/core, and IdKind.Work allows it (work:pmid:<n>, leading zeros stripped). Verified by dataset-engineer on 2026-10-18 in the phase 03 working tree, which the human has not yet committed."
+        field: "ids.pmid"
+      - key: openalex_institution_id
+        namespace: openalex
+        field: "authorships[].institutions[].id (unverified subfield name). Runtime-allowed with publication_year (HD-03-02)."
+      - key: ror
+        namespace: ror
+        field: "authorships[].institutions[].ror (unverified subfield name). Runtime-allowed with publication_year (HD-03-02)."
+    update_method: >-
+      Quarterly public snapshot. Changed records land in new updated_date= partitions, and
+      deletions are listed in deleted_ids.csv.gz, so an incremental update copies only partitions
+      newer than the last recorded release and applies deletions. Each release gets a new
+      release= prefix.
+    limitations:
+      - "No published checksums. Integrity rests on manifest content_length and record_count plus a sha256 recorded at download."
+      - "Authorship subfield names (author.id, author.orcid, raw_author_name, institutions, author_position) are unverified this session. Confirm against one part file before parsing."
+      - "Author IDs are OpenAlex's own disambiguation. They are evidence, not ground truth (match policy: entity-resolution-engineer)."
+      - "The API now uses a free daily usage budget with an API key. Whether keyless requests are still served, and how to pass a key, is unverified. fetch-by-id.sh sends no key."
+    privacy_notes:
+      - "Contains real names, ORCID iDs, and institutional affiliations (raw_affiliation_strings). CC0 covers copyright, not privacy expectations."
+      - "ORCID iDs are used only as OpenAlex carries them. No ORCID registry or profile data is fetched to enrich them (HD-03-01, human decision, phase 03 human gate, 2026-10-18)."
+      - "Affiliations, institution-level only at runtime (HD-03-02, human decision, phase 03 human gate, 2026-10-18): only resolved institution links (authorships[].institutions[].id as an OpenAlex institution ID, or its ror) paired with the work's publication_year may reach runtime stores. raw_affiliation_strings and institution display names are batch only, for example as entity-resolution features, and are dropped before Neptune, DynamoDB, S3 Vectors, and any runtime-facing export."
+      - "The sample is fictional."
+    decision_refs: [HD-03-01, HD-03-02, HD-03-04, HD-03-05]
+    affiliation_handling:
+      decision: HD-03-02
+      batch_only_fields:
+        - "authorships[].raw_affiliation_strings"
+        - "authorships[].institutions[].display_name"
+      runtime_allowed_fields:
+        - "authorships[].institutions[].id (OpenAlex institution ID) with publication_year"
+        - "authorships[].institutions[].ror (ROR ID) with publication_year"
+      runtime_allowed_note: "Subfield names are unverified until the HD-03-04 confirmation download."
+      drop_before: [neptune, dynamodb, s3-vectors, runtime-export]
+    confirmation_download:
+      decision: HD-03-04
+      status: approved-in-principle-not-run
+      bound: >-
+        A few hundred works through fetch-by-id.sh openalex (at most 500 DOIs, the script's hard
+        cap). A works part file is not used for confirmation: a part holds up to 400,000 records
+        and its byte size is unknown until the bucket manifest is listed.
+      confirms:
+        - "authorships subfields: author.id, author.orcid, raw_author_name, institutions[].id, institutions[].ror, author_position, raw_affiliation_strings"
+        - "whether keyless API requests are served"
+    validation_commands:
+      - "bash datasets/scripts/validate-datasets.sh"
+      - "bash datasets/scripts/fetch.sh openalex --plan"
+      - "bash datasets/scripts/fetch-by-id.sh openalex --ids dois.txt --dest \"$SCHOLARCHAIN_DATA_DIR\" --plan"
+    samples:
+      - path: "datasets/samples/openalex/openalex-works-sample.jsonl"
+        format: jsonl
+        records: 4
+        malformed_records: 1
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18 in the OpenAlex work object shape."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "uppercase DOI variant of 10.5555/sc441.0001"
+          - "raw_author_name in Unicode NFD versus NFC display_name"
+          - "ASCII-folded raw name"
+          - "doi, title, display_name null; empty authorships"
+          - "HTML markup in the title"
+          - "truncated JSON line"
+
+  # ---------------------------------------------------------------------------------------
+  - id: crossref
+    source_type: crossref
+    role: enrichment
+    status: selected
+    name: "Crossref works metadata"
+    selection_reason: "Authoritative DOI registration metadata. Author lists with ORCID (including authenticated-orcid), affiliations, and references. Bibliographic metadata is facts, not subject to copyright."
+    source:
+      publisher: "Crossref"
+      homepage: "https://www.crossref.org/"
+      download_urls:
+        api: "https://api.crossref.org/works/<doi>"
+        public_data_file_excluded: "Not used (HD-03-03). Listed for the record only: Academic Torrents, or requester-pays S3 bucket api-snapshots-reqpays-crossref (example file March-2025-public-data-file-from-crossref.tar)"
+      evidence:
+        - url: "https://www.crossref.org/documentation/retrieve-metadata/"
+          retrieved: "2026-10-18"
+          fact: "Metadata reusable without restriction except abstracts. Bibliographic metadata including references is facts. Crossref-generated data is CC0. Abstracts are publisher or author copyright."
+        - url: "https://www.crossref.org/documentation/retrieve-metadata/bulk-downloads/"
+          retrieved: "2026-10-18"
+          fact: "The 2025 public data file is approximately 200 GB, a tar with JSONL. Academic Torrents and requester-pays bucket api-snapshots-reqpays-crossref. No checksums on the page."
+        - url: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"
+          retrieved: "2026-10-18"
+          fact: "Polite pool through the mailto parameter. 'almost none of the metadata is subject to copyright'. Some abstracts may be copyrighted."
+        - url: "https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md"
+          retrieved: "2026-10-18"
+          fact: "Work fields DOI, title, author (Contributor: family, given, ORCID, authenticated-orcid, affiliation), issued, container-title, type, reference."
+        - url: "https://api.crossref.org/works/10.5555/12345678"
+          retrieved: "2026-10-18"
+          fact: "Prefix 10.5555 belongs to publisher 'Test accounts' (member 7822). The author object carries sequence."
+    license:
+      name: "Facts, no known copyright (bibliographic metadata); CC0-1.0 for Crossref-generated data; abstracts excluded"
+      url: "https://www.crossref.org/documentation/retrieve-metadata/"
+      evidence_url: "https://www.crossref.org/documentation/retrieve-metadata/"
+      attribution: "Not required for the facts. ScholarChain cites Crossref as the source. Documentation text itself is CC BY 4.0, but ScholarChain copies none of it."
+      redistribution: "Bibliographic metadata and references: no restriction. Abstracts: publisher or author copyright, so ScholarChain does not ingest, store, or redistribute them."
+    snapshot:
+      version: "REST API, live (bounded lookups are stamped with retrieval time). The 2025 public data file is not used (HD-03-03)."
+      date: "2026-10-18 (verification date of the API path; each response is stamped at fetch)"
+      evidence_url: "https://www.crossref.org/documentation/retrieve-metadata/bulk-downloads/"
+    format: "JSON (REST API message object, one work per line in the sample); bulk: tar of JSONL"
+    size_estimate:
+      text: "Bounded API subset only (HD-03-03): about 2 to 10 KB per work (unverified, from the sample shape); at most 500 works per run, so roughly 5 MB at most (unverified). The 2025 public data file (approximately 200 GB) is excluded."
+      evidence_url: "https://www.crossref.org/documentation/retrieve-metadata/bulk-downloads/"
+    s3_prefixes:
+      subset: "s3://${raw_bucket}/raw/crossref/api/dblp_snapshot=2026-10-03/"
+      sample: "s3://${sample_bucket}/samples/crossref/manifest_version=1/"
+    checksums:
+      upstream:
+        - file: "api responses (one per DOI)"
+          algorithm: none
+          value: "to be recorded at download"
+          evidence_url: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"
+          note: "fetch-by-id.sh writes a sha256 sidecar per response."
+      samples:
+        - path: "datasets/samples/crossref/crossref-works-sample.jsonl"
+          sha256: "a52e792af2231c000e9ef3ed36ed5912d7a222dca53f801d5756f081d3d151b3"
+          bytes: 4290
+    subset_rule: >-
+      DOIs extracted from the DBLP seed subset's ee fields, looked up one at a time with
+      fetch-by-id.sh crossref (default 25, cap 500, 1 s between requests, polite-pool mailto from
+      SCHOLARCHAIN_CROSSREF_MAILTO when set). The abstract field is dropped at ingestion. This
+      bounded REST lookup by DOI is the only Crossref access path (HD-03-03, human decision,
+      phase 03 human gate, 2026-10-18). No requester-pays or torrent bulk public data file.
+    schema: "datasets/schemas/crossref.md"
+    linkage_keys:
+      - key: doi
+        namespace: doi
+        field: "DOI (lowercase)"
+      - key: orcid
+        namespace: orcid
+        field: "author[].ORCID (URL form; strip resolver, validate check digit; used as carried, HD-03-01)"
+      - key: reference_doi
+        namespace: doi
+        field: "reference[].DOI"
+    update_method: "Bounded API re-lookup by DOI per run (responses kept per run prefix). The yearly public data file is not used (HD-03-03); using it would need a new human decision."
+    limitations:
+      - "API responses are live and change between runs. Pin by storing raw responses with sha256 and fetch time."
+      - "No bulk file (HD-03-03), so coverage is limited to DOIs found in the DBLP seed subset, at most 500 per run."
+      - "ORCID URL scheme (http versus https) in live data is unverified. Normalization must accept both."
+    privacy_notes:
+      - "Contains real names, ORCID iDs, and affiliation strings deposited by publishers."
+      - "ORCID iDs are used only as Crossref carries them (author[].ORCID, authenticated-orcid). No ORCID registry or profile data is fetched to enrich them (HD-03-01, human decision, phase 03 human gate, 2026-10-18)."
+      - "Affiliations, institution-level only at runtime (HD-03-02, human decision, phase 03 human gate, 2026-10-18): author[].affiliation[].name strings may be used in batch only, for example as entity-resolution features, and are dropped before Neptune, DynamoDB, S3 Vectors, and any runtime-facing export. No resolved institution ID field in Crossref affiliations was verified in phase 03, so no Crossref affiliation data reaches runtime."
+      - "authenticated-orcid distinguishes ORCID-verified assertions. Unauthenticated ORCIDs are weaker evidence (policy: entity-resolution-engineer)."
+      - "The polite-pool mailto is an operator contact address. It comes from the environment at run time and is never committed."
+      - "The sample is fictional, except for the Josiah Carberry demonstration identity."
+    decision_refs: [HD-03-01, HD-03-02, HD-03-03, HD-03-04]
+    affiliation_handling:
+      decision: HD-03-02
+      batch_only_fields:
+        - "author[].affiliation[].name"
+      runtime_allowed_fields: []
+      runtime_allowed_note: "Any resolved institution identifier inside Crossref affiliation objects is unverified; none is runtime-allowed until verified and approved."
+      drop_before: [neptune, dynamodb, s3-vectors, runtime-export]
+    confirmation_download:
+      decision: HD-03-04
+      status: approved-in-principle-not-run
+      bound: "A few hundred DOIs through fetch-by-id.sh crossref (at most 500, the script's hard cap, 1 s between requests)."
+      confirms:
+        - "author[].ORCID URL scheme (http versus https)"
+        - "author[].sequence and affiliation object shape"
+        - "issued date-parts [[null]] quirk"
+    validation_commands:
+      - "bash datasets/scripts/validate-datasets.sh"
+      - "bash datasets/scripts/fetch-by-id.sh crossref --ids dois.txt --dest \"$SCHOLARCHAIN_DATA_DIR\" --plan"
+    samples:
+      - path: "datasets/samples/crossref/crossref-works-sample.jsonl"
+        format: jsonl
+        records: 5
+        malformed_records: 1
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18 in the Crossref REST work message shape."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "mixed-case DOI 10.5555/SC441.0002"
+          - "ORCID with invalid check digit 0000-0002-1825-0098"
+          - "24-author work"
+          - "no author array; issued date-parts [[null]]"
+          - "reference with only unstructured text"
+          - "truncated JSON line"
+
+  # ---------------------------------------------------------------------------------------
+  - id: opencitations
+    source_type: opencitations
+    role: enrichment
+    status: selected
+    name: "OpenCitations Index: citation data (CSV)"
+    selection_reason: "CC0 citation links keyed by DOI and OMID. They give independent evidence links between DBLP works and validate DOI joins. Used as evidence, not as coauthorship."
+    source:
+      publisher: "OpenCitations"
+      homepage: "https://opencitations.net/"
+      download_urls:
+        figshare_article: "https://api.figshare.com/v2/articles/24356626/versions/8"
+        figshare_doi: "https://doi.org/10.6084/m9.figshare.24356626.v8"
+        confirmation_shard: "https://ndownloader.figshare.com/files/68274988"
+        api: "https://api.opencitations.net/index/v2/citations/doi:<doi> and /references/doi:<doi>"
+      evidence:
+        - url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+          retrieved: "2026-10-18"
+          fact: "Re-read in phase 03 Round 2 for the full file list: 94 entries, published 2026-09-08T09:33:59Z, version 8, license CC0. Smallest: 2026-09-01T15_0-11.zip, 180939784 bytes, computed_md5 642bf5f9f06c925cfdd298af9f8484ef, download_url https://ndownloader.figshare.com/files/68274988. Next smallest: 2026-09-01T18_0-11.zip, 353575561 bytes. Largest: 2026-09-03T19_0-11.zip, 543078628 bytes. Read through WebFetch's page summarizer, not the raw JSON bytes. The chosen file's name, size, and MD5 match the independent Round 1 reading, and fetch.sh verifies the MD5 at download."
+        - url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+          retrieved: "2026-10-18"
+          fact: "'OpenCitations Index CSV dataset of all the citation data', version 8, published 2026-09-08T09:33:59Z, license CC0. 94 zip files, each with size and computed_md5 (first: 2026-09-01T15_0-11.zip, 180939784 bytes, md5 642bf5f9f06c925cfdd298af9f8484ef)."
+        - url: "https://download.opencitations.net/"
+          retrieved: "2026-10-18"
+          fact: "Index July 2026 dump 'Released on 2026-07-28'. Citation data CSV 36GB zip, 250GB unzipped, Figshare 10.6084/m9.figshare.24356626.v8. License and checksums not stated on this page."
+        - url: "https://api.opencitations.net/index/v2"
+          retrieved: "2026-10-18"
+          fact: "Citation fields oci, citing, cited, creation, timespan, journal_sc, author_sc. ID format 'omid:br/... doi:... pmid:...'. Operations /citations/{id} and /references/{id} accept omid, doi, pmid, issn, isbn. Access token recommended, not required. 180 requests per minute per IP without one."
+    license:
+      name: "CC0-1.0"
+      url: "https://creativecommons.org/publicdomain/zero/1.0/"
+      evidence_url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+      attribution: "Not required under CC0. ScholarChain cites the Figshare DOI 10.6084/m9.figshare.24356626.v8. The API documentation text is CC BY 4.0, but ScholarChain copies none of it."
+      redistribution: "Permitted without restriction (CC0)."
+    snapshot:
+      version: "Figshare 24356626 v8"
+      date: "2026-09-08"
+      doi: "10.6084/m9.figshare.24356626.v8"
+      evidence_url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+    format: "zip archives of CSV (header oci,citing,cited,creation,timespan,journal_sc,author_sc; column order in bulk files unverified)"
+    size_estimate:
+      compressed_bytes_approx: 36000000000
+      uncompressed_bytes_approx: 250000000000
+      text: "36 GB zipped, 250 GB unzipped (download page). The Figshare v8 file list has 94 zip files of 180939784 to 543078628 bytes each."
+      evidence_url: "https://download.opencitations.net/"
+    s3_prefixes:
+      raw: "s3://${raw_bucket}/raw/opencitations/index-csv/figshare_v=8/"
+      subset: "s3://${raw_bucket}/raw/opencitations/api/dblp_snapshot=2026-10-03/"
+      sample: "s3://${sample_bucket}/samples/opencitations/manifest_version=1/"
+    checksums:
+      upstream:
+        - file: "94 zip files listed in the Figshare v8 article JSON"
+          algorithm: md5
+          value: "642bf5f9f06c925cfdd298af9f8484ef"
+          evidence_url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+          note: "The value shown is for the first file (2026-09-01T15_0-11.zip). Figshare publishes computed_md5 per file. fetch.sh opencitations --metadata stores the full list for per-file verification."
+      samples:
+        - path: "datasets/samples/opencitations/opencitations-index-sample.csv"
+          sha256: "eddfb3b453b5119a8a25d0f53d86f5dc1a1713f2654f42e5c8c54c5b2a40ffdf"
+          bytes: 674
+    subset_rule: >-
+      Bounded default: /citations/doi:<doi> and /references/doi:<doi> API lookups for the DBLP
+      seed subset DOIs (fetch-by-id.sh opencitations, default 25, cap 500, 1 s between requests,
+      within the 180 per minute limit). Keep only citations where both ends map to a work in the
+      seed subset. The full CSV dump is used only after a human approves 36 GB.
+    schema: "datasets/schemas/opencitations.md"
+    linkage_keys:
+      - key: doi
+        namespace: doi
+        field: "citing/cited token doi:<doi> (lowercase)"
+      - key: omid
+        namespace: omid
+        namespace_note: "IdNamespace.Omid (wire name omid) is present in modules/core, and IdKind.Work allows it (work:omid:br/<digits>; other OMID entity types are rejected). Verified by dataset-engineer on 2026-10-18 in the phase 03 working tree, which the human has not yet committed."
+        field: "citing/cited token omid:br/<n>"
+      - key: pmid
+        namespace: pmid
+        namespace_note: "IdNamespace.Pmid (wire name pmid) is present in modules/core, and IdKind.Work allows it. Verified by dataset-engineer on 2026-10-18 in the phase 03 working tree, which the human has not yet committed."
+        field: "citing/cited token pmid:<n>"
+      - key: oci
+        namespace: none
+        namespace_note: "No core namespace, by design (settled by domain-engineer in phase 03; see Q-linkage-keys-without-core-namespace). An OCI names a citation, not an entity. The citation's graph identity is its CITES edge ID, and the OCI, normalized by IdFormat.normalizeOci (strip 'oci:', require <digits>-<digits>), is the sourceRecordId of that edge's evidence (source_dataset opencitations)."
+        field: "oci"
+    update_method: "New Figshare versions of article 24356626 (v8 now). Each version gets its own figshare_v= prefix. Per-file computed_md5 from the article JSON is verified at download."
+    limitations:
+      - "Snapshot date discrepancy: download page says 'Released on 2026-07-28', Figshare v8 is dated 2026-09-08 with files from 2026-09-01 to 2026-09-05. Open question Q-opencitations-snapshot-date (kept open by HD-03-05)."
+      - "The bulk CSV column order and header presence are unverified. Confirm on one approved zip."
+      - "The omid and pmid IdNamespace values exist in modules/core (domain-engineer, phase 03; verified 2026-10-18 in the working tree, which the human has not yet committed). The linkage keys above use those exact wire names."
+      - "Citations are work-to-work. They add no coauthorship edges."
+    privacy_notes:
+      - "No personal names in the citation data. author_sc is a derived self-citation flag."
+    decision_refs: [HD-03-04, HD-03-05]
+    confirmation_download:
+      decision: HD-03-04
+      status: approved-in-principle-not-run
+      approved_by: HD-03-04
+      invoked_by: human
+      max_bytes: 180939784
+      shard_interpretation: >-
+        dataset-engineer reads one Figshare v8 zip as "one shard" under HD-03-04. OpenCitations
+        publishes the CSV dump only as these 94 zip files, so a zip is the smallest official
+        unit, and one zip (0.18 to 0.54 GB) is about 0.5 to 1.5 percent of the 36 GB dump. This
+        is dataset-engineer's reading of HD-03-04, not a separate human decision. The human
+        confirms it by running the command below with this bound.
+      chosen_file:
+        name: "2026-09-01T15_0-11.zip"
+        listed_bytes: 180939784
+        md5: "642bf5f9f06c925cfdd298af9f8484ef"
+        url: "https://ndownloader.figshare.com/files/68274988"
+        evidence_url: "https://api.figshare.com/v2/articles/24356626/versions/8"
+        retrieved: "2026-10-18"
+        selection: "Smallest of the 94 listed files. The next smallest is 353575561 bytes, and the largest is 543078628 bytes."
+      bound: >-
+        180939784 bytes, the listed size of the chosen file, which is also the sources.tsv
+        full-tier row opencitations/index-csv-v8-shard-2026-09-01T15. fetch.sh verifies the
+        Figshare computed_md5 before keeping the file. API lookups (fetch-by-id.sh opencitations,
+        at most 500 DOIs) do not confirm the bulk CSV layout.
+      human_command: "bash datasets/scripts/fetch.sh opencitations --full --max-bytes 180939784 --dest \"$SCHOLARCHAIN_DATA_DIR\""
+      human_only_note: "Human-invoked only. docs/agents.md section 7b blocks fetch.sh --full for every agent."
+      confirms:
+        - "bulk CSV column order and header row"
+    validation_commands:
+      - "bash datasets/scripts/validate-datasets.sh"
+      - "bash datasets/scripts/fetch.sh opencitations --plan"
+      - "bash datasets/scripts/fetch-by-id.sh opencitations --ids dois.txt --dest \"$SCHOLARCHAIN_DATA_DIR\" --plan"
+    samples:
+      - path: "datasets/samples/opencitations/opencitations-index-sample.csv"
+        format: csv
+        records: 5
+        malformed_records: 1
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18 with the Index v2 citation fields as CSV columns."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "several IDs per cell (omid, doi, pmid)"
+          - "mixed-case DOI"
+          - "cited entity with only an OMID"
+          - "empty timespan; partial creation date"
+          - "short row (2 of 7 columns)"
+
+  # ---------------------------------------------------------------------------------------
+  - id: arxiv
+    source_type: arxiv
+    role: enrichment
+    status: selected
+    name: "arXiv metadata through OAI-PMH (metadataPrefix=arXiv)"
+    selection_reason: "CC0 metadata. Links DBLP CoRR records to arXiv IDs and to published-version DOIs, and adds structured author name parts. E-prints are not used."
+    source:
+      publisher: "arXiv (Cornell University)"
+      homepage: "https://arxiv.org/"
+      download_urls:
+        oai_pmh: "https://oaipmh.arxiv.org/oai"
+        schema: "https://oaipmh.arxiv.org/OAI/arXiv.xsd"
+      evidence:
+        - url: "https://info.arxiv.org/help/license/index.html"
+          retrieved: "2026-10-18"
+          fact: "'A Creative Commons CC0 1.0 Universal Public Domain Dedication will apply to all metadata.' Full text follows the submitter's license."
+        - url: "https://info.arxiv.org/help/api/tou.html"
+          retrieved: "2026-10-18"
+          fact: "At most one request every three seconds, one connection. Descriptive metadata under CC0 1.0. Do not store or serve e-prints without permission. Linking to the abstract page is encouraged."
+        - url: "https://info.arxiv.org/help/oa/index.html"
+          retrieved: "2026-10-18"
+          fact: "OAI-PMH base URL https://oaipmh.arxiv.org/oai (replaced export.arxiv.org/oai2, March 2025). Formats oai_dc, arXiv, arXivRaw. Full harvest without a datestamp range. Resumption tokens expire daily."
+        - url: "https://oaipmh.arxiv.org/oai?verb=Identify"
+          retrieved: "2026-10-18"
+          fact: "repositoryName arXiv, protocolVersion 2.0, earliestDatestamp 2005-09-16, deletedRecord persistent, granularity YYYY-MM-DD."
+        - url: "https://oaipmh.arxiv.org/OAI/arXiv.xsd"
+          retrieved: "2026-10-18"
+          fact: "Elements id (required), created, updated, authors/author (keyname required, forenames, suffix, affiliation), title, categories, comments, doi, journal-ref, license, abstract, and others."
+    license:
+      name: "CC0-1.0 (metadata only)"
+      url: "https://creativecommons.org/publicdomain/zero/1.0/"
+      evidence_url: "https://info.arxiv.org/help/license/index.html"
+      attribution: "Not required for CC0 metadata. arXiv encourages linking to the abstract page, and ScholarChain links https://arxiv.org/abs/<id> in evidence."
+      redistribution: "Metadata: unrestricted (CC0). E-prints (PDF and source): not stored or served (API Terms of Use). Each e-print's license field describes the paper, not the metadata."
+    snapshot:
+      version: "OAI-PMH harvest, live; pinned per harvest by from/until window and responseDate"
+      date: "2026-10-18 (verification date; each harvest records its own responseDate)"
+      evidence_url: "https://oaipmh.arxiv.org/oai?verb=Identify"
+    format: "OAI-PMH 2.0 XML (ListRecords pages with resumptionToken), metadataPrefix=arXiv, UTF-8"
+    size_estimate:
+      text: "unknown: arXiv does not state a metadata harvest size on the verified pages. Bounded runs fetch at most 5 ListRecords pages per call."
+      evidence_url: "https://info.arxiv.org/help/oa/index.html"
+    s3_prefixes:
+      subset: "s3://${raw_bucket}/raw/arxiv/oai/set=cs/harvest=${harvest_date}/"
+      sample: "s3://${sample_bucket}/samples/arxiv/manifest_version=1/"
+    checksums:
+      upstream:
+        - file: "ListRecords pages"
+          algorithm: none
+          value: "to be recorded at download"
+          evidence_url: "https://info.arxiv.org/help/oa/index.html"
+          note: "OAI-PMH provides no checksums. fetch-by-id.sh writes a sha256 sidecar per page."
+      samples:
+        - path: "datasets/samples/arxiv/arxiv-oai-sample.xml"
+          sha256: "392f94c165c4c5744f3a1bd090319ecb3d1001e31743019dbb9ebb2c54970851"
+          bytes: 2648
+    subset_rule: >-
+      Set cs, datestamp window from configuration, at most 5 pages per call, 3 s minimum between
+      requests (fetch-by-id.sh arxiv). Keep only records whose id matches a DBLP CoRR ee URL or
+      whose doi matches a DBLP seed DOI. A full harvest needs human approval because the size is
+      unknown.
+    schema: "datasets/schemas/arxiv.md"
+    linkage_keys:
+      - key: arxiv_id
+        namespace: arxiv
+        field: "metadata/arXiv/id"
+      - key: doi
+        namespace: doi
+        field: "metadata/arXiv/doi (lowercase)"
+    update_method: "Incremental OAI-PMH harvest: from = last responseDate, no until. Each harvest gets its own harvest= prefix. Deleted records arrive as header status=deleted."
+    limitations:
+      - "Harvest size is unknown. No checksums."
+      - "The OAI identifier prefix (oai:arXiv.org:) and TeX escapes in names are unverified."
+      - "The 3 s rate limit makes large harvests slow: one page per request."
+    privacy_notes:
+      - "Contains real author names and optional free-text affiliations supplied by submitters."
+      - "Affiliations, institution-level only at runtime (HD-03-02, human decision, phase 03 human gate, 2026-10-18): authors/author/affiliation strings may be used in batch only, for example as entity-resolution features, and are dropped before Neptune, DynamoDB, S3 Vectors, and any runtime-facing export. arXiv carries no resolved institution IDs, so no arXiv affiliation data reaches runtime."
+      - "Abstracts are CC0 metadata, but they are authored text. Use them only as provenance-tagged evidence text."
+      - "The sample is fictional."
+    decision_refs: [HD-03-02, HD-03-04]
+    affiliation_handling:
+      decision: HD-03-02
+      batch_only_fields:
+        - "metadata/arXiv/authors/author/affiliation"
+      runtime_allowed_fields: []
+      runtime_allowed_note: "arXiv has no resolved institution IDs."
+      drop_before: [neptune, dynamodb, s3-vectors, runtime-export]
+    confirmation_download:
+      decision: HD-03-04
+      status: approved-in-principle-not-run
+      bound: "One ListRecords page (set cs, a one-day datestamp window) through fetch-by-id.sh arxiv --max-pages 1, 3 s minimum between requests."
+      confirms:
+        - "OAI identifier prefix oai:arXiv.org:"
+        - "TeX accent escapes in author names"
+    validation_commands:
+      - "bash datasets/scripts/validate-datasets.sh"
+      - "bash datasets/scripts/fetch.sh arxiv --plan"
+      - "bash datasets/scripts/fetch-by-id.sh arxiv --from 2024-01-01 --until 2024-01-01 --dest \"$SCHOLARCHAIN_DATA_DIR\" --plan"
+    samples:
+      - path: "datasets/samples/arxiv/arxiv-oai-sample.xml"
+        format: xml
+        well_formed: true
+        record_element: "record"
+        records: 3
+        malformed_records: 0
+        provenance: "Synthetic, hand-authored by dataset-engineer on 2026-10-18 as an OAI-PMH ListRecords response in the arXiv metadata format."
+        license: "CC0-1.0 (ScholarChain-authored)"
+        edge_cases:
+          - "TeX-escaped author name M\\\"uller"
+          - "multi-line title"
+          - "old-style identifier with suffix, no DOI, no license"
+          - "deleted record (header only)"
+          - "preprint of the DBLP conference work (shared DOI 10.5555/sc441.0001)"
+
+excluded_candidates:
+  - id: orcid
+    source_type: orcid
+    reason: >-
+      Excluded as a bulk dataset in phase 03. The annual Public Data File (2025 is the latest
+      listed) is CC0, and its use policy imposes no access conditions. But it is a registry of
+      personal profiles, and the use policy asks users to 'Respect the rights of privacy and
+      publicity of the individuals' and notes that the data elements 'remain subject to any
+      rights of the individuals'. Its size was not stated on the verified page. ORCID iDs already
+      reach ScholarChain as linkage keys through DBLP (author/@orcid), Crossref (author.ORCID,
+      authenticated-orcid), and OpenAlex.
+      Human decision, phase 03 human gate, 2026-10-18 (HD-03-01): EXCLUDED. ORCID iDs are used
+      only when DBLP, OpenAlex, or Crossref already carry them. No bulk personal-profile data is
+      ingested.
+    decision_refs: [HD-03-01]
+    evidence_urls:
+      - "https://info.orcid.org/documentation/integration-guide/working-with-bulk-data/"
+      - "https://info.orcid.org/public-data-file-use-policy/"
+      - "https://pub.orcid.org/v3.0/0000-0002-1825-0097/person"
+  - id: semantic-scholar
+    source_type: semantic-scholar
+    reason: >-
+      Excluded. The API License Agreement grants 'a limited, non-exclusive, non-transferable,
+      non-sublicensable and terminable license', forbids redistributing or sublicensing, and
+      requires attribution and citation. Bulk S2 datasets (S2AG, S2ORC) are 'separately governed
+      by the licenses that accompany such S2 Data', which the page's examples show can include
+      CC BY-NC. Those licenses were not verified per dataset. An API key would be a credential
+      outside Secrets Manager. The terms need human review before any use.
+      Human decision, phase 03 human gate, 2026-10-18 (HD-03-05): stays excluded. The legal
+      review question is deferred (Q-semantic-scholar-license-review).
+    decision_refs: [HD-03-05]
+    evidence_urls:
+      - "https://www.semanticscholar.org/product/api/license"
+  - id: papers-with-code
+    source_type: papers-with-code
+    reason: >-
+      Excluded. On 2026-10-18 https://paperswithcode.com/about returned HTTP 302 to
+      https://huggingface.co/papers/trending, so no current official data dump or license page
+      could be verified. Linkage value for coauthorship is also low (paper-to-code links).
+    evidence_urls:
+      - "https://paperswithcode.com/about"
+
+open_questions:
+  - id: Q-openalex-snapshot-pin
+    status: open
+    owner: dataset-engineer
+    question: "OpenAlex snapshot pin: the documentation describes a September 2026 release, but quarterly releases fall on the second Wednesday of January, April, July, and October. Which release is current must be read from the bucket's release notes at download."
+    note: "Kept open by HD-03-05."
+  - id: Q-openalex-api-key
+    status: open
+    owner: dataset-engineer
+    question: "OpenAlex API: are keyless requests still served, and how is a key passed? If a key is needed it has to come from Secrets Manager (infra-engineer and human). The HD-03-04 confirmation download will show whether keyless requests work."
+  - id: Q-opencitations-snapshot-date
+    status: open
+    owner: dataset-engineer
+    question: "OpenCitations: 'Released on 2026-07-28' (download page) versus Figshare v8 of 2026-09-08. Which is the citable snapshot?"
+    note: "Kept open by HD-03-05. The manifest pins Figshare v8."
+  - id: Q-dblp-size
+    status: open
+    owner: dataset-engineer
+    question: "DBLP uncompressed size and record count are not stated by the publisher."
+    note: "Kept open by HD-03-05."
+  - id: Q-dblp-confirmation-bound
+    status: closed
+    resolution: HD-03-06
+    question: "HD-03-04 approves 'a few hundred records or one shard' per source, but dblp's smallest verified official artifact is the 1.03 GB release file. What byte bound does the human approve for the dblp confirmation download?"
+    note: >-
+      Closed by HD-03-06 (phase 03 human gate, Round 2: "DBLP test download limit can be
+      increased for now"). dataset-engineer set the bound to 1200000000 bytes (dblp
+      confirmation_download.max_bytes, justified there). It stays human-invoked only, because
+      fetch.sh --full is blocked for every agent (docs/agents.md section 7b). The human passes the
+      bound as --max-bytes. The bound is provisional ("for now").
+  - id: Q-crossref-public-data-file
+    status: closed
+    resolution: HD-03-03
+    question: "Crossref public data file: is a requester-pays S3 transfer or a torrent download acceptable?"
+    note: "Closed: no bulk data file; bounded REST API by DOI only."
+  - id: Q-orcid-public-data-file
+    status: closed
+    resolution: HD-03-01
+    question: "Is ORCID public-data-file ingestion wanted at all?"
+    note: "Closed: excluded. ORCID iDs are used only as carried by DBLP, OpenAlex, or Crossref."
+  - id: Q-affiliations-runtime
+    status: closed
+    resolution: HD-03-02
+    question: "May affiliation data reach runtime stores?"
+    note: "Closed: institution-level only (ROR or OpenAlex institution IDs with a year). Raw affiliation strings are batch only."
+  - id: Q-semantic-scholar-license-review
+    status: deferred
+    resolution: HD-03-05
+    question: "Semantic Scholar: should its license terms be reviewed for a later phase?"
+    note: "Deferred. Semantic Scholar stays excluded."
+  - id: Q-line-endings
+    status: closed
+    resolution: owner-fix
+    resolved_by: build-engineer
+    question: "Line endings: a .gitattributes rule (for example 'datasets/samples/** -text') is needed so checkouts keep sample bytes exact. build-engineer owns .gitattributes; another agent is working on it in this phase."
+    note: >-
+      Closed. build-engineer added 'datasets/samples/** -text -eol' as the last path rule in
+      .gitattributes (last match wins), plus '*.py', '*.tsv', and '*.md' as 'text eol=lf'.
+      dataset-engineer verified it in phase 03 Round 2 (evidence below). Residual: .gitattributes
+      was still uncommitted on 2026-10-18 (git status ' M .gitattributes'). The rule protects
+      fresh checkouts only once it is committed with or before the samples (human commit). The
+      local core.autocrlf was 'input' when checked.
+    evidence:
+      - command: "git check-attr -a datasets/samples/dblp/dblp-sample.xml datasets/samples/opencitations/opencitations-index-sample.csv datasets/samples/SHA256SUMS"
+        observed: "text: unset and eol: unset for all three paths"
+        observed_on: "2026-10-18"
+      - command: "git check-attr -a datasets/scripts/validate_datasets.py datasets/scripts/sources.tsv"
+        observed: "text: set and eol: lf for both paths"
+        observed_on: "2026-10-18"
+      - command: "bash datasets/scripts/record-sample-checksums.sh --check"
+        observed: "STEP sample-checksums action=check result=ok files=7 (exit 0)"
+        observed_on: "2026-10-18"
+  - id: Q-unverified-wire-details
+    status: open
+    owner: dataset-engineer
+    question: "Unverified wire details listed in each schema note (OpenAlex authorship and institution subfields, Crossref ORCID scheme, OpenCitations bulk CSV column order, the arXiv OAI identifier prefix, the DBLP CoRR key pattern) must be confirmed before parsers depend on them."
+    note: "HD-03-04 approves one bounded confirmation download per source in principle. Not yet run; each dataset's confirmation_download block records the bound."
+  - id: Q-linkage-keys-without-core-namespace
+    status: closed
+    resolution: owner-fix
+    resolved_by: domain-engineer
+    question: "Linkage keys with no usable core IdNamespace: dblp_person_id (dblp), oci (opencitations), and openalex_author_id (the openalex namespace exists, but core's researcher ID kind takes no namespace). Should core add namespaces or keep these as source record IDs only?"
+    note: >-
+      Closed. dataset-engineer verified domain-engineer's phase 03 settlement in the
+      modules/core working tree, which the human has not yet committed. (1) omid and pmid are
+      IdNamespace values, and IdKind.Work allows them. (2) oci deliberately has no namespace:
+      IdFormat.normalizeOci pins it as the sourceRecordId of a CITES edge's evidence. (3) The
+      Researcher ID kind takes no namespace. A dblp person ID or an OpenAlex author ID becomes a
+      researcher ID only as the anchor of researcher:sc1:H("scholarchain:researcher:sc1",
+      anchorDataset, anchorRecordId) through StableIds.scholarChainResearcherId. Otherwise it is
+      a source record ID. Core contains no dblp-person-specific or OpenAlex-author-specific code.
+      Which anchor a cluster uses is entity-resolution policy. The manifest's linkage_keys keep
+      namespace none (with notes) for dblp_person_id and oci, and openalex for
+      openalex_author_id.
+    evidence:
+      - command: "grep -n -A18 'enum IdNamespace' modules/core/src/main/scala/edu/uic/cs441/scholarchain/core/model/Enums.scala"
+        observed: "case Omid extends IdNamespace(\"omid\") and case Pmid extends IdNamespace(\"pmid\") are present. No oci, dblp-person, or openalex-author namespace."
+        observed_on: "2026-10-18"
+      - command: "sed -n 15,60p modules/core/src/main/scala/edu/uic/cs441/scholarchain/core/ids/IdFormat.scala"
+        observed: "IdKind.Work namespaces include IdNamespace.Omid and IdNamespace.Pmid. IdKind.Researcher is declared with Set.empty."
+        observed_on: "2026-10-18"
+      - command: "sed -n 205,225p modules/core/src/main/scala/edu/uic/cs441/scholarchain/core/ids/IdFormat.scala"
+        observed: "normalizeOci strips 'oci:' and requires <digits>-<digits>. Its Scaladoc: an OCI 'is a provenance record key rather than an IdNamespace' and 'the OCI is the sourceRecordId of that edge's evidence'."
+        observed_on: "2026-10-18"
+      - command: "sed -n 95,130p modules/core/src/main/scala/edu/uic/cs441/scholarchain/core/ids/StableIds.scala"
+        observed: "scholarChainResearcherId(identityVersion, anchorDataset: SourceType, anchorRecordId) returns researcher:sc<N>:H(\"scholarchain:researcher:sc<N>\", anchorDataset.wire, anchorRecordId). The Scaladoc says the anchor choice belongs to entity-resolution."
+        observed_on: "2026-10-18"

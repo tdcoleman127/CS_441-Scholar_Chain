@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "edgeId": "gedge:v1:641b42a8d957263c5038b43e5909fc277a10cd827c8542d53dcd79938a50360d",
+  "edgeType": "COAUTHORED_WITH",
+  "fromId": "researcher:orcid:0000-0002-1825-0097",
+  "toId": "researcher:sc1:2288d5bc36f4eebcf91c1e7399f902b26ee76295b5936b58f6203e1321341600",
+  "policyVersion": "graph-policy-v1",
+  "window": {
+    "startYear": 2020,
+    "endYear": 2024
+  },
+  "weight": 2,
+  "confidence": 0.95,
+  "evidenceIds": [
+    "evidence:v1:76b5ffce76941206c355ce3b2ce217875bafa014c8479ef6073e5fb623ba0fcc"
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "graph-edges",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "workId": "work:dblp:conf/kdd/CarberrySmith24",
+  "researcherId": "researcher:orcid:0000-0002-1825-0097",
+  "mentionId": "mention:v1:6b7f517df8cd9fa35a83284f23aab20ccfc256d34cff069b741416b9af94779b",
+  "authorPosition": 0,
+  "year": 2024,
+  "provenance": {
+    "sourceDataset": "dblp",
+    "sourceRecordId": "conf/kdd/CarberrySmith24",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "bundleId": "bundle:v1:f7cde200c2a902907a1fa0f6832786cd7344cc836de73bbd85f7abf8a04c30b5",
+  "items": [
+    {
+      "schemaVersion": 1,
+      "evidenceId": "evidence:v1:76b5ffce76941206c355ce3b2ce217875bafa014c8479ef6073e5fb623ba0fcc",
+      "evidenceType": "source-record",
+      "subjectId": "work:dblp:conf/kdd/CarberrySmith24",
+      "contentHash": "sha256:46abb2a6741700f17a78a5d629c0c2a013551f5c516ab2735d10f41b8da9586c",
+      "excerpt": "Josiah Carberry, Jane Smith 0001: A Sample Study of Collaboration Graphs. KDD 2024",
+      "provenance": {
+        "sourceDataset": "dblp",
+        "sourceRecordId": "conf/kdd/CarberrySmith24",
+        "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "evidenceId": "evidence:v1:10fbe7a6e7918e9992fc2fb446d5432b16e1ee6a5bd0bc960cfe7304b13bcc6b",
+      "evidenceType": "graph-edge",
+      "subjectId": "gedge:v1:641b42a8d957263c5038b43e5909fc277a10cd827c8542d53dcd79938a50360d",
+      "contentHash": "sha256:021ce60cdafcbee66217a64c234515ad772bf02337002bb3a1de0b1730ac8370",
+      "excerpt": null,
+      "provenance": {
+        "sourceDataset": "scholarchain-pipeline",
+        "sourceRecordId": "graph-edges",
+        "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+      }
+    }
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-runtime",
+    "sourceRecordId": "request-0001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

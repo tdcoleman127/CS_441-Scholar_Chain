@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "researcherId": "researcher:orcid:0000-0002-1825-0097",
+  "window": {
+    "startYear": 2020,
+    "endYear": 2024
+  },
+  "policyVersion": "graph-policy-v1",
+  "metrics": [
+    {
+      "metric": "degree",
+      "value": 1
+    },
+    {
+      "metric": "coauthored-work-count",
+      "value": 2
+    },
+    {
+      "metric": "clustering-coefficient",
+      "value": 0.25
+    }
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "graph-metrics",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

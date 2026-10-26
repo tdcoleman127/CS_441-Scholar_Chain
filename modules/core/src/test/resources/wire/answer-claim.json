@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "claimId": "claim:v1:5020639f0b2be6de53133039c01452c5d752972c7924e4f39b7f9e03b358bad3",
+  "text": "Josiah Carberry coauthored two works with Jane Smith between 2022 and 2024.",
+  "evidenceIds": [
+    "evidence:v1:10fbe7a6e7918e9992fc2fb446d5432b16e1ee6a5bd0bc960cfe7304b13bcc6b",
+    "evidence:v1:76b5ffce76941206c355ce3b2ce217875bafa014c8479ef6073e5fb623ba0fcc"
+  ],
+  "verificationStatus": "supported",
+  "confidence": 0.9,
+  "provenance": {
+    "sourceDataset": "scholarchain-runtime",
+    "sourceRecordId": "request-0001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

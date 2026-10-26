@@ -43,7 +43,7 @@ fail() { out+="FAIL  $*"$'\n'; fails=$((fails+1)); }
 py() { PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" "$@"; }
 
 REQUIRED_COMMANDS="deploy rollback incident run-pipeline experiment"
-EXPECTED_NO_TERRITORY="code-reviewer dependency-updater"
+EXPECTED_NO_TERRITORY="code-reviewer"
 MCP_READ_TOOLS="mcp__aws-api__call_aws mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation mcp__aws-docs__recommend mcp__terraform__search_providers mcp__terraform__get_provider_details mcp__terraform__get_latest_provider_version mcp__terraform__get_provider_capabilities mcp__terraform__search_modules mcp__terraform__get_module_details mcp__terraform__get_latest_module_version mcp__github__actions_list mcp__github__actions_get mcp__github__get_job_logs mcp__github__list_releases mcp__github__get_latest_release mcp__github__get_file_contents mcp__github__list_commits mcp__github__get_commit mcp__github__pull_request_read mcp__github__list_pull_requests mcp__github__issue_read mcp__github__list_issues"
 READ_ONLY_TOOLS="Read Grep Glob Bash"
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
@@ -124,11 +124,31 @@ owners="$(sed -n '/^sc_owner()/,/^}/p' .claude/hooks/guard-ownership.sh 2>/dev/n
 for o in $owners; do
   in_list "$o" "$roster human generated none" || fail "ownership: guard-ownership.sh names unknown owner '$o'"
 done
+# Phase-03 amendment B: the ledger value grant (LEDGER_PATH / LEDGER_EDITOR) counts as territory,
+# and must be recorded in the docs/agents.md section 4 ledger row.
+ledger_editor="$(sed -n 's/^LEDGER_EDITOR="\(.*\)"$/\1/p' .claude/hooks/guard-ownership.sh 2>/dev/null)"
+ledger_path="$(sed -n 's/^LEDGER_PATH="\(.*\)"$/\1/p' .claude/hooks/guard-ownership.sh 2>/dev/null)"
+if [ -n "$ledger_editor" ]; then
+  in_list "$ledger_editor" "$roster" || fail "ownership: LEDGER_EDITOR '$ledger_editor' is not a roster agent"
+  if tr -d '\r' < docs/agents.md | grep -i -- "^| \`$ledger_path\`" | grep -q -- "\`$ledger_editor\`"; then
+    pass "ownership: ledger grant $ledger_path -> $ledger_editor is recorded in docs/agents.md section 4"
+  else
+    fail "ownership: ledger grant $ledger_path -> $ledger_editor has no matching row in docs/agents.md section 4"
+  fi
+fi
 for a in $roster; do
-  if ! in_list "$a" "$owners" && ! in_list "$a" "$EXPECTED_NO_TERRITORY"; then
+  if ! in_list "$a" "$owners $ledger_editor" && ! in_list "$a" "$EXPECTED_NO_TERRITORY"; then
     fail "ownership: roster agent '$a' owns no path in guard-ownership.sh"
   fi
 done
+# Script maps (docs/agents.md sections 7 and 7b) may name only roster agents.
+set -f   # the "*" (any caller) entries must not glob
+for fn in script_runners dataset_script_runners; do
+  for a in $(sed -n "/^$fn()/,/^}/p" .claude/hooks/guard-dangerous.sh 2>/dev/null | sed -n 's/.*echo "\([^"]*\)" ;;.*/\1/p'); do
+    [ "$a" = "*" ] || [ "$a" = "unknown" ] || in_list "$a" "$roster" || fail "orphan: $fn in guard-dangerous.sh names unknown agent '$a'"
+  done
+done
+set +f
 [ "$fails" -eq "$fails_before_orphans" ] && pass "orphans: roster, agent files, guard ROSTER, and ownership owners agree"
 
 # ---- 5. Hooks: syntax and executable bits -------------------------------------------------------

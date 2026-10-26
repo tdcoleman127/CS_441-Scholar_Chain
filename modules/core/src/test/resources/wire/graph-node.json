@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "nodeId": "researcher:orcid:0000-0002-1825-0097",
+  "nodeType": "Researcher",
+  "label": "Josiah Carberry",
+  "properties": [
+    {
+      "name": "orcid",
+      "value": "0000-0002-1825-0097"
+    }
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "graph-nodes",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

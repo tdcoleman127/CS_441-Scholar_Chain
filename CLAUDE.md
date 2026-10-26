@@ -23,6 +23,7 @@ The module graph has no cycles. Hadoop and Spark are `Provided` where EMR suppli
 - `sbt fmt`: formats all Scala sources. A hook also formats each Scala file after every write.
 - `bash .claude/hooks/validate-agent-files.sh`: validates agents, hooks, settings, MCP configuration, and commands.
 - `scripts/check.sh`, `scripts/plan.sh <env>`, and the other operational scripts: written by infra-engineer and run only by the agents mapped in docs/agents.md section 7.
+- `bash datasets/scripts/validate-datasets.sh` and the other dataset scripts: written by dataset-engineer and run from the repository root only by the agents mapped in docs/agents.md section 7b.
 - `/deploy`, `/rollback`, `/incident`, `/run-pipeline`, `/experiment`: frozen procedures that name their responsible agent and gates.
 
 ## Laws

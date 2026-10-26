@@ -1,0 +1,171 @@
+ok  A01  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A02  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash scripts/unmapped.sh
+       | BLOCKED by guard-dangerous: scripts/unmapped.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  A03  want=BLOCK got=BLOCK [deploy-engineer cwd=<repo>] cd scripts && bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+ok  A04  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] cd scripts && ./unmapped.sh
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('./unmapped.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'sc
+ok  A05  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>/scripts] bash deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A06  want=BLOCK got=BLOCK [deploy-engineer cwd=<repo>] bash scripts/cleanup.sh dev
+       | BLOCKED by guard-dangerous: scripts/cleanup.sh is human-invoked only (cleanup lists and deletes resources). Report the cleanup request as MANUAL ACTION REQUIRED.
+ok  A07  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash scripts/plan.sh prod
+       | BLOCKED by guard-dangerous: scripts/plan.sh must be called with an approved environment as its first argument (approved: dev; got 'prod'). New environments need a ratified amendment to docs/agents.md section 7.
+ok  A08  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] bash scripts/plan.sh dev
+ok  A09  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash scripts/check.sh
+ok  A10  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash /tmp/x/scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A11  want=BLOCK got=BLOCK [hadoop-engineer cwd=<repo>] bash modules/hadoop/scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: hadoop-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A12  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd "C:/Users/figge/AppData/Local/Temp/claude/c--Users-figge-OneDrive-Desktop-UIC-Folder-CS-441-CS-441-Scholar-Chain/01e45a01-49df-4038-87d9-18e1cbd07cf1/scratchpad/r4/narrow/scripts" && bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+ok  A13  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] pushd scripts && bash rollback.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('rollback.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scri
+ok  A14  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] env -C scripts bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+ok  D01  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+ok  D02  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+ok  D03  want=ALLOW got=ALLOW [orchestrator cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+ok  D04  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh --check
+ok  D05  want=BLOCK got=BLOCK [test-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh
+       | BLOCKED by guard-dangerous: test-engineer may run datasets/scripts/record-sample-checksums.sh only with --check (verify). Writing datasets/samples/SHA256SUMS is dataset-engineer's (docs/agents.md section 7b).
+ok  D06  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh
+ok  D07  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out datasets/samples/x.csv
+ok  D08  want=BLOCK got=BLOCK [hadoop-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out /tmp/x.csv
+       | BLOCKED by guard-dangerous: hadoop-engineer may not run datasets/scripts/sample-extract.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D09  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan
+ok  D10  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: infra-engineer may not run datasets/scripts/fetch.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D11  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --plan
+ok  D12  want=BLOCK got=BLOCK [rag-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --plan
+       | BLOCKED by guard-dangerous: rag-engineer may not run datasets/scripts/fetch-by-id.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D13  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the 
+ok  D14  want=BLOCK got=BLOCK [orchestrator cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: orchestrator may not run datasets/scripts/fetch.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D15  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/lib.sh
+       | BLOCKED by guard-dangerous: datasets/scripts/lib.sh is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until it is ra
+ok  D16  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] source datasets/scripts/lib.sh
+       | BLOCKED by guard-dangerous: datasets/scripts/lib.sh is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until it is ra
+ok  D17  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/new-unmapped.sh
+       | BLOCKED by guard-dangerous: datasets/scripts/new-unmapped.sh is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until
+ok  D18  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd datasets && bash scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('scripts/validate-datasets.sh') is blocked because the script's identity cannot be verified. Run it from the reposit
+ok  D19  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd datasets/scripts && bash fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('fetch.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts
+ok  D20  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>/datasets/scripts] bash fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the 
+ok  D21  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>/datasets/scripts] bash validate-datasets.sh
+ok  D22  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>/datasets/scripts] bash fetch.sh all --plan
+       | BLOCKED by guard-dangerous: infra-engineer may not run datasets/scripts/fetch.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D23  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>/datasets] bash scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: infra-engineer may not run datasets/scripts/fetch.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D24  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out CLAUDE.md
+       | BLOCKED by guard-dangerous: datasets/scripts/sample-extract.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datas
+ok  D25  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --metadata --dest .claude/hooks
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a
+ok  D26  want=ALLOW got=ALLOW [spark-engineer cwd=<repo>] ./datasets/scripts/validate-datasets.sh
+ok  D27  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash /tmp/x/datasets/scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D28  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full=1 --dest /tmp/d
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the 
+ok  D29  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash -c "bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9"
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the 
+ok  D30  want=ALLOW got=ALLOW [code-reviewer cwd=<repo>] bash -n datasets/scripts/fetch.sh
+ok  D31  want=BLOCK got=BLOCK [code-reviewer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: code-reviewer is read-only: Bash is limited to evidence gathering (git diff/log/show/status/blame, ls, cat, grep, find, wc, bash -n, sbt compile/test/check, terraform fmt -check/validate, JSON parsing).
+ok  D32  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/tests/run-tests.sh
+ok  D33  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash "C:/Users/figge/AppData/Local/Temp/claude/c--Users-figge-OneDrive-Desktop-UIC-Folder-CS-441-CS-441-Scholar-Chain/01e45a01-49df-4038-87d9-18e1cbd07cf1/scratchpad/r4/narrow/datasets/scripts/fetch.sh" all --plan
+ok  D34  want=ASK got=ASK [dataset-engineer cwd=<repo>/datasets/scripts] bash fetch-by-id.sh openalex --ids /tmp/ids --plan
+ok  D35  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --metadata --dest docs/agent-runs/phase-03
+       | BLOCKED by guard-dangerous: datasets/scripts/fetch.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a
+ok  D36  want=BLOCK got=BLOCK [domain-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh --root .git/x
+       | BLOCKED by guard-dangerous: datasets/scripts/validate-datasets.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under da
+ok  D37  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/sub/x.sh
+       | BLOCKED by guard-dangerous: datasets/scripts/sub/x.sh is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until it is 
+ok  D38  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash DATASETS/Scripts/Fetch.sh all --plan
+       | BLOCKED by guard-dangerous: infra-engineer may not run datasets/scripts/fetch.sh. Allowed: dataset-engineer (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer.
+ok  D39  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] xargs bash datasets/scripts/fetch.sh < /tmp/a
+       | BLOCKED by guard-dangerous: 'xargs' runs the shell 'bash' with arguments supplied at run time (for example 'xargs bash', 'find -exec bash'), so the script cannot be verified against the section 7 map (fail closed). Run 'scripts/<n
+ok  D40  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] find . -name x -exec datasets/scripts/fetch.sh dblp --full {} ;
+       | BLOCKED by guard-dangerous: find start path '.' is (or is inside) a protected directory, and the files it touches there cannot be verified to stay clear of protected paths (CLAUDE.md, docs/agents.md, .mcp.json, .claude/**, .git co
+ok  L01  want=ALLOW got=ALLOW [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"'
+ok  L02  want=ALLOW got=ALLOW [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '  val slf4j   = "2.0.17"\n  val logback = "1.5.38"' -> '  val slf4j   = "2.0.18"\n  val logback = "1.5.39"'
+ok  L03  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/build.sbt: 'Versions.munit % Test' -> 'Versions.munit % Compile'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'build.sbt'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as BLOCKED-ON 
+ok  L04  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.6"\n  val circe = "0.14.10"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer). Route struct
+ok  L05  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munitX = "1.3.7"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer). Route struct
+ok  L06  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "latest"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: literal "1.3.6" -> "latest" is not a version value. Route structural changes to build-engineer (BLOCKED-ON OWNER: build-engin
+ok  L07  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.+"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: "1.3.+" is not an exact pinned version (no ranges, +, whitespace, latest, or SNAPSHOT). Route structural changes to build-eng
+ok  L08  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.4.0-SNAPSHOT"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: "1.4.0-SNAPSHOT" is not an exact pinned version (no ranges, +, whitespace, latest, or SNAPSHOT). Route structural changes to 
+ok  L09  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "[1.3,2.0)"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: "[1.3,2.0)" is not an exact pinned version (no ranges, +, whitespace, latest, or SNAPSHOT). Route structural changes to build
+ok  L10  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Write <repo>/project/Versions.scala: '' -> 'object Versions {}'
+       | BLOCKED by guard-ownership: dependency-updater may change project/versions.scala only with the Edit tool (got Write). Whole-file writes and multi-edits of the dependency ledger belong to build-engineer.
+ok  L11  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] MultiEdit <repo>/project/Versions.scala: '' -> ''
+       | BLOCKED by guard-ownership: dependency-updater may change project/versions.scala only with the Edit tool (got MultiEdit). Whole-file writes and multi-edits of the dependency ledger belong to build-engineer.
+ok  L12  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/plugins.sbt: 'Versions.sbtScalafmt' -> '"2.6.3"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/plugins.sbt'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as B
+ok  L13  want=ALLOW got=ALLOW [build-engineer cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.6"\n  val circe = "0.14.10"'
+ok  L14  want=BLOCK got=BLOCK [domain-engineer cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"'
+       | BLOCKED by guard-ownership: domain-engineer does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as B
+ok  L15  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '// Rules: exact versions only' -> '// Rules: any versions'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer). Route struct
+ok  L16  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7" + sys.env("X")'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer). Route struct
+ok  L17  want=ALLOW got=ALLOW [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '"amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9"' -> '"amazoncorretto:17.0.21-al2023-headless@sha256:0000000000000000000000000000000000000000000000000000000000000000"'
+ok  L18  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/PROJECT/versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"\n"'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: a backslash or an unbalanced double quote cannot be checked (fail closed). Route structural changes to build-engineer (BLOCKE
+ok  L19  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7""'
+       | BLOCKED by guard-ownership: dependency-updater may change only version values in project/versions.scala: a backslash or an unbalanced double quote cannot be checked (fail closed). Route structural changes to build-engineer (BLOCKE
+ok  L20  want=ALLOW got=ALLOW [dependency-updater cwd=<repo>] sed -i s/1.3.6/1.3.7/ build.sbt
+ok  L21  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] sed -i s/a/b/ CLAUDE.md
+       | BLOCKED by guard-dangerous: only factory-engineer writes CLAUDE.md, docs/agents.md, .claude/agents|hooks|commands/*, .claude/settings.json, and .mcp.json, and only as a proposal awaiting human ratification. Return STATUS: BLOCKED-
+ok  G15  want=ASK got=ASK [dataset-engineer cwd=<repo>] SC_CURL_MAX_TIME=900 bash datasets/scripts/fetch.sh dblp --metadata --dest /tmp/d
+ok  G16  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh --root .
+ok  G17  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] >/tmp/out.txt echo hi
+ok  G01  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan > /tmp/plan.txt
+ok  G02  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh | grep -E 'RESULT'
+ok  G03  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh 2>&1 | tail -n 5
+ok  G04  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --metadata --dest /tmp/d
+ok  G05  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] grep -n -- --full datasets/scripts/fetch.sh
+ok  G06  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] cat datasets/scripts/fetch.sh
+ok  G07  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] find datasets -name '*.sh' -exec bash -n {} ;
+ok  G08  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] xargs -I{} cp {} /tmp/out/ < /tmp/list
+ok  G09  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] cp datasets/samples/a.csv /tmp/a.csv
+ok  G10  want=ALLOW got=ALLOW [hadoop-engineer cwd=<repo>] python -I datasets/scripts/validate_datasets.py --root /tmp/x
+ok  G11  want=ALLOW got=ALLOW [code-reviewer cwd=<repo>] git diff -- datasets/scripts/fetch.sh
+ok  G12  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>] cd "C:/Users/figge/AppData/Local/Temp/claude/c--Users-figge-OneDrive-Desktop-UIC-Folder-CS-441-CS-441-Scholar-Chain/01e45a01-49df-4038-87d9-18e1cbd07cf1/scratchpad/r4/narrow" && bash datasets/scripts/validate-datasets.sh
+ok  G13  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan | tee /tmp/plan.txt
+ok  G14  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash scripts/check.sh
+ok  H01  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+ok  H02  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] find modules -name '*.sh' -exec bash -n {} \;
+ok  H03  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] ls modules | xargs -I{} echo {}
+ok  H04  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] git ls-files modules | xargs grep -n TODO
+ok  H05  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] xargs -n 1 echo < /tmp/list
+ok  H06  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] find modules -name '*.scala' -exec grep -l Provenance {} +
+ok  H07  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] grep -rn -- --full datasets/scripts
+ok  H08  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] cat datasets/scripts/fetch.sh | grep -n -- --full
+ok  H09  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] echo done; case $? in 0) echo ok ;; esac
+ok  H10  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] timeout 60 sbt test
+ok  H11  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>] nice -n 10 bash datasets/scripts/validate-datasets.sh
+ok  H12  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan
+ok  H13  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] flock /tmp/l sbt test
+ok  H14  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] trap 'rm -f /tmp/sc/x' EXIT; sbt test
+ok  H15  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] git log --oneline -- datasets/scripts/fetch.sh
+ok  H16  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] git fsck --full
+ok  H17  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input datasets/samples/opencitations/opencitations-index-sample.csv --dois datasets/scripts/sources.tsv --out datasets/samples/opencitations/x.csv
+ok  H18  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input datasets/samples/opencitations/opencitations-index-sample.csv --dois datasets/scripts/sources.tsv --out /tmp/sc/x.csv
+ok  H19  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh --check --root datasets/samples
+ok  H20  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --plan
+ok  H22  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] ls | xargs -n 1 echo
+ok  H23  want=ALLOW got=ALLOW [code-reviewer cwd=<repo>] bash -n datasets/scripts/fetch.sh
+ok  H24  want=ALLOW got=ALLOW [test-engineer cwd=<repo>] coproc sbt test; wait
+ok  H25  want=ASK got=ASK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh dblp --metadata --dest /tmp/sc-data
+NARROW-REGRESSION: 0 unexpected

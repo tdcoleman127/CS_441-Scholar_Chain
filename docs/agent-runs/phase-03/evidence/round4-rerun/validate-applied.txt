@@ -1,0 +1,93 @@
+PASS  json: .claude/settings.json parses
+PASS  json: .mcp.json parses
+PASS  roster: 18 agents in docs/agents.md authority matrix
+PASS  agent: build-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation)
+PASS  agent: code-reviewer (frontmatter valid; tools: Read Grep Glob Bash)
+PASS  agent: dataset-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash WebFetch)
+PASS  agent: dependency-updater (frontmatter valid; tools: Read Grep Glob Edit Bash WebSearch WebFetch mcp__github__list_releases mcp__github__get_latest_release)
+PASS  agent: deploy-engineer (frontmatter valid; tools: Read Grep Glob Bash Write mcp__aws-api__call_aws)
+PASS  agent: documentation-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: domain-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: entity-resolution-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: experiment-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash mcp__aws-api__call_aws)
+PASS  agent: factory-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: hadoop-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: incident-responder (frontmatter valid; tools: Read Grep Glob Bash Write Edit mcp__aws-api__call_aws mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation)
+PASS  agent: infra-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash mcp__aws-api__call_aws mcp__terraform__search_providers mcp__terraform__get_provider_details mcp__terraform__get_latest_provider_version mcp__terraform__get_provider_capabilities mcp__terraform__search_modules mcp__terraform__get_module_details mcp__terraform__get_latest_module_version mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation mcp__github__actions_list mcp__github__actions_get mcp__github__get_job_logs)
+PASS  agent: rag-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation)
+PASS  agent: service-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: spark-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  agent: storage-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation)
+PASS  agent: test-engineer (frontmatter valid; tools: Read Grep Glob Write Edit Bash)
+PASS  reviewer fence: code-reviewer is registered as read-only in guard-dangerous.sh
+PASS  ownership: ledger grant project/versions.scala -> dependency-updater is recorded in docs/agents.md section 4
+PASS  orphans: roster, agent files, guard ROSTER, and ownership owners agree
+PASS  bash -n: .claude/hooks/common.sh
+PASS  exec bit: .claude/hooks/common.sh is 100755 in the git index
+PASS  bash -n: .claude/hooks/format-scala.sh
+PASS  exec bit: .claude/hooks/format-scala.sh is 100755 in the git index
+PASS  bash -n: .claude/hooks/guard-dangerous.sh
+PASS  exec bit: .claude/hooks/guard-dangerous.sh is 100755 in the git index
+PASS  bash -n: .claude/hooks/guard-ownership.sh
+PASS  exec bit: .claude/hooks/guard-ownership.sh is 100755 in the git index
+PASS  bash -n: .claude/hooks/validate-agent-files.sh
+PASS  exec bit: .claude/hooks/validate-agent-files.sh is 100755 in the git index
+PASS  bash -n: .claude/hooks/verify-tests-ran.sh
+PASS  exec bit: .claude/hooks/verify-tests-ran.sh is 100755 in the git index
+PASS  settings: explicit allow list present (64 rules)
+PASS  settings: explicit deny list present (136 rules)
+PASS  floor deny rule present: Bash(terraform apply...
+PASS  floor deny rule present: Bash(terraform destroy...
+PASS  floor deny rule present: Bash(git push --force...
+PASS  floor deny rule present: Bash(git push -f...
+PASS  floor deny rule present: Read(**/.env)...
+PASS  floor deny rule present: Read(**/.env.*)...
+PASS  floor deny rule present: Read(**/secrets/**)...
+PASS  floor deny rule present: Bash(aws s3 rb...
+PASS  floor deny rule present: Bash(aws s3 rm...
+PASS  floor deny rule present: Bash(aws dynamodb delete-...
+PASS  floor deny rule present: Bash(aws neptune delete-...
+PASS  floor deny rule present: Bash(aws s3vectors delete-...
+PASS  floor deny rule present: Bash(aws ecr delete-...
+PASS  floor deny rule present: Bash(aws kms schedule-key-deletion...
+PASS  floor deny rule present: Bash(aws emr terminate-job-flows...
+PASS  hook wired: PreToolUse Bash -> guard-dangerous.sh
+PASS  hook wired: PreToolUse mcp__aws-api__call_aws -> guard-dangerous.sh
+PASS  hook wired: PreToolUse Edit -> guard-ownership.sh
+PASS  hook wired: PreToolUse Write -> guard-ownership.sh
+PASS  hook wired: PostToolUse Write -> format-scala.sh
+PASS  hook wired: PostToolUse Edit -> format-scala.sh
+PASS  hook wired: PostToolUse Write -> validate-agent-files.sh
+PASS  hook wired: Stop * -> verify-tests-ran.sh
+PASS  hook wired: SubagentStop * -> verify-tests-ran.sh
+PASS  hook file exists: .claude/hooks/guard-dangerous.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/guard-dangerous.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/guard-dangerous.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/guard-dangerous.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/guard-ownership.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/guard-ownership.sh (PreToolUse)
+PASS  hook file exists: .claude/hooks/format-scala.sh (PostToolUse)
+PASS  hook file exists: .claude/hooks/validate-agent-files.sh (PostToolUse)
+PASS  hook file exists: .claude/hooks/verify-tests-ran.sh (Stop)
+PASS  hook file exists: .claude/hooks/verify-tests-ran.sh (Stop)
+PASS  hook file exists: .claude/hooks/verify-tests-ran.sh (SubagentStop)
+PASS  hook file exists: .claude/hooks/verify-tests-ran.sh (SubagentStop)
+PASS  mcp: servers ['aws-api', 'aws-docs', 'github', 'terraform'] match docs/agents.md section 9 ['aws-api', 'aws-docs', 'github', 'terraform']
+PASS  mcp: no literal secrets (only ${VAR} references)
+PASS  mcp: github uses the read-only endpoint
+PASS  mcp: aws-api READ_OPERATIONS_ONLY=true
+PASS  mcp: terraform limited to public registry toolset, no TFE_TOKEN
+PASS  mcp: github pins its server version
+PASS  mcp: aws-api pins its server version
+PASS  mcp: terraform pins its server version
+PASS  mcp: aws-docs pins its server version
+PASS  command: /deploy -> deploy-engineer (gates present)
+PASS  command: /rollback -> deploy-engineer (gates present)
+PASS  command: /incident -> incident-responder (gates present)
+PASS  command: /run-pipeline -> deploy-engineer (gates present)
+PASS  command: /experiment -> experiment-engineer (gates present)
+PASS  floor: Stop hook honors stop_hook_active
+PASS  floor: guard blocks terraform apply/destroy
+PASS  floor: guard blocks force pushes
+PASS  floor: formatter always exits 0
+RESULT: PASS

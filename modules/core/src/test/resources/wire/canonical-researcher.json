@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "researcherId": "researcher:orcid:0000-0002-1825-0097",
+  "displayName": "Josiah Carberry",
+  "orcid": "0000-0002-1825-0097",
+  "nameVariants": [
+    "J. Carberry",
+    "Josiah Carberry"
+  ],
+  "institutionIds": [
+    "institution:ror:0sample00"
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "er-cluster-0001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

@@ -1,0 +1,124 @@
+ok  A01  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A02  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash scripts/unmapped.sh
+       | BLOCKED by guard-dangerous: scripts/unmapped.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  A03  want=BLOCK got=BLOCK [deploy-engineer cwd=<repo>] cd scripts && bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+ok  A04  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] cd scripts && ./unmapped.sh
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('./unmapped.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'sc
+ok  A05  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>/scripts] bash deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A06  want=BLOCK got=BLOCK [deploy-engineer cwd=<repo>] bash scripts/cleanup.sh dev
+       | BLOCKED by guard-dangerous: scripts/cleanup.sh is human-invoked only (cleanup lists and deletes resources). Report the cleanup request as MANUAL ACTION REQUIRED.
+ok  A07  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash scripts/plan.sh prod
+       | BLOCKED by guard-dangerous: scripts/plan.sh must be called with an approved environment as its first argument (approved: dev; got 'prod'). New environments need a ratified amendment to docs/agents.md section 7.
+ok  A08  want=ALLOW got=ALLOW [infra-engineer cwd=<repo>] bash scripts/plan.sh dev
+ok  A09  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash scripts/check.sh
+ok  A10  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash /tmp/x/scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: dataset-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A11  want=BLOCK got=BLOCK [hadoop-engineer cwd=<repo>] bash modules/hadoop/scripts/deploy.sh dev
+       | BLOCKED by guard-dangerous: hadoop-engineer may not run scripts/deploy.sh. Allowed: deploy-engineer. Route the request through the orchestrator to the responsible agent and its slash command.
+ok  A12  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd "C:/Users/figge/OneDrive/Desktop/UIC Folder/CS 441/CS_441-Scholar_Chain/scripts" && bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+ok  A13  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] pushd scripts && bash rollback.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('rollback.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scri
+ok  A14  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] env -C scripts bash deploy.sh dev
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('deploy.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'script
+UNEXPECTED D01  want=ALLOW got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: scripts/validate-datasets.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D02  want=ALLOW got=BLOCK [domain-engineer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: scripts/validate-datasets.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D03  want=ALLOW got=BLOCK [orchestrator cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: scripts/validate-datasets.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D04  want=ALLOW got=BLOCK [test-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh --check
+       | BLOCKED by guard-dangerous: scripts/record-sample-checksums.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D05  want=BLOCK got=BLOCK [test-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh
+       | BLOCKED by guard-dangerous: scripts/record-sample-checksums.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D06  want=ALLOW got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/record-sample-checksums.sh
+       | BLOCKED by guard-dangerous: scripts/record-sample-checksums.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D07  want=ALLOW got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out datasets/samples/x.csv
+       | BLOCKED by guard-dangerous: scripts/sample-extract.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D08  want=BLOCK got=BLOCK [hadoop-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out /tmp/x.csv
+       | BLOCKED by guard-dangerous: scripts/sample-extract.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D09  want=ALLOW got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D10  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D11  want=ALLOW got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --plan
+       | BLOCKED by guard-dangerous: scripts/fetch-by-id.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D12  want=BLOCK got=BLOCK [rag-engineer cwd=<repo>] bash datasets/scripts/fetch-by-id.sh crossref --ids /tmp/ids --plan
+       | BLOCKED by guard-dangerous: scripts/fetch-by-id.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D13  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D14  want=BLOCK got=BLOCK [orchestrator cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D15  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/lib.sh
+       | BLOCKED by guard-dangerous: scripts/lib.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D16  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] source datasets/scripts/lib.sh
+       | BLOCKED by guard-dangerous: scripts/lib.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D17  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/new-unmapped.sh
+       | BLOCKED by guard-dangerous: scripts/new-unmapped.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D18  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd datasets && bash scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('scripts/validate-datasets.sh') is blocked because the script's identity cannot be verified. Run it from the reposit
+ok  D19  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] cd datasets/scripts && bash fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+       | BLOCKED by guard-dangerous: a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('fetch.sh') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts
+UNEXPECTED D20  want=BLOCK got=ALLOW [dataset-engineer cwd=<repo>/datasets/scripts] bash fetch.sh dblp --full --dest /tmp/d --max-bytes 9
+ok  D21  want=ALLOW got=ALLOW [domain-engineer cwd=<repo>/datasets/scripts] bash validate-datasets.sh
+UNEXPECTED D22  want=BLOCK got=ALLOW [infra-engineer cwd=<repo>/datasets/scripts] bash fetch.sh all --plan
+ok  D23  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>/datasets] bash scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D24  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/sample-extract.sh csv --input /tmp/a.csv --dois /tmp/d --out CLAUDE.md
+       | BLOCKED by guard-dangerous: scripts/sample-extract.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D25  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh all --metadata --dest .claude/hooks
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+UNEXPECTED D26  want=ALLOW got=BLOCK [spark-engineer cwd=<repo>] ./datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: scripts/validate-datasets.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D27  want=BLOCK got=BLOCK [infra-engineer cwd=<repo>] bash /tmp/x/datasets/scripts/fetch.sh all --plan
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D28  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash datasets/scripts/fetch.sh dblp --full=1 --dest /tmp/d
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D29  want=BLOCK got=BLOCK [dataset-engineer cwd=<repo>] bash -c "bash datasets/scripts/fetch.sh dblp --full --dest /tmp/d --max-bytes 9"
+       | BLOCKED by guard-dangerous: scripts/fetch.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D30  want=ALLOW got=ALLOW [code-reviewer cwd=<repo>] bash -n datasets/scripts/fetch.sh
+ok  D31  want=BLOCK got=BLOCK [code-reviewer cwd=<repo>] bash datasets/scripts/validate-datasets.sh
+       | BLOCKED by guard-dangerous: scripts/validate-datasets.sh is not in the script execution map (docs/agents.md section 7). Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude.
+ok  D32  want=ALLOW got=ALLOW [dataset-engineer cwd=<repo>] bash datasets/tests/run-tests.sh
+UNEXPECTED L01  want=ALLOW got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+UNEXPECTED L02  want=ALLOW got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '  val slf4j   = "2.0.17"\n  val logback = "1.5.38"' -> '  val slf4j   = "2.0.18"\n  val logback = "1.5.39"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L03  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/build.sbt: 'Versions.munit % Test' -> 'Versions.munit % Compile'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'build.sbt'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as BLOCKED-ON 
+ok  L04  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.6"\n  val circe = "0.14.10"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L05  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munitX = "1.3.7"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L06  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "latest"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L07  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.+"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L08  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.4.0-SNAPSHOT"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L09  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "[1.3,2.0)"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L10  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Write <repo>/project/Versions.scala: '' -> 'object Versions {}'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L11  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] MultiEdit <repo>/project/Versions.scala: '' -> ''
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L12  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/plugins.sbt: 'Versions.sbtScalafmt' -> '"2.6.3"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/plugins.sbt'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as B
+ok  L13  want=ALLOW got=ALLOW [build-engineer cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.6"\n  val circe = "0.14.10"'
+ok  L14  want=BLOCK got=BLOCK [domain-engineer cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"'
+       | BLOCKED by guard-ownership: domain-engineer does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed as B
+ok  L15  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '// Rules: exact versions only' -> '// Rules: any versions'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L16  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7" + sys.env("X")'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+UNEXPECTED L17  want=ALLOW got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: '"amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9"' -> '"amazoncorretto:17.0.21-al2023-headless@sha256:0000000000000000000000000000000000000000000000000000000000000000"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L18  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/PROJECT/versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7"\n"'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+ok  L19  want=BLOCK got=BLOCK [dependency-updater cwd=<repo>] Edit <repo>/project/Versions.scala: 'val munit = "1.3.6"' -> 'val munit = "1.3.7""'
+       | BLOCKED by guard-ownership: dependency-updater does not own 'project/versions.scala'; its owner is build-engineer. Decline this edit and return STATUS: BLOCKED-ON with BLOCKED-ON OWNER: build-engineer and the exact change needed a
+UNEXPECTED L20  want=BLOCK got=ALLOW [dependency-updater cwd=<repo>] sed -i s/1.3.6/1.3.7/ build.sbt
+BASELINE-HEAD: 15 unexpected

@@ -13,6 +13,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 . "$HERE/common.sh"
 SC_HOOK="guard-ownership"
+# Phase-03 amendment B (docs/agents.md section 3 refinement 4 and section 4): the dependency ledger.
+# Its path owner stays build-engineer (structure, new entries, names, comments, scopes). LEDGER_EDITOR
+# may change only the contents of existing string literals in LEDGER_PATH, with the Edit tool, to
+# exact version strings (ledger_value_edit below). Lower case, repository-relative.
+LEDGER_PATH="project/versions.scala"
+LEDGER_EDITOR="dependency-updater"
 
 SC_INPUT="$(cat)"
 export SC_INPUT
@@ -92,6 +98,48 @@ if [ "$caller" = "orchestrator" ]; then
 fi
 
 [ "$caller" = "$owner" ] && exit 0
+
+# Ledger value edits (amendment B). The test is mechanical: replace every one-line double-quoted
+# literal in old_string and new_string with "" and require the two skeletons to be byte-identical
+# (so no val, name, comment, operator, or entry is added, removed, or changed); then every changed
+# literal must hold a digit before and after and match an exact-version pattern (no ranges, '+',
+# whitespace, 'latest', or SNAPSHOT). Odd quote counts and backslashes fail closed. Write, MultiEdit,
+# and NotebookEdit are refused. Bash writes to the ledger are NOT checked here (section 4 limits).
+ledger_value_edit() {
+  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
+import json, os, re
+ti = (json.loads(os.environ.get("SC_INPUT") or "{}").get("tool_input") or {})
+old, new = ti.get("old_string"), ti.get("new_string")
+def fail(m):
+    print(m); raise SystemExit(0)
+if not isinstance(old, str) or not isinstance(new, str) or old == "":
+    fail("the edit has no old_string/new_string pair")
+LIT = re.compile(r"\"([^\"\\\n]*)\"")
+def skel(s):
+    if "\\" in s or s.count("\"") % 2:
+        fail("a backslash or an unbalanced double quote cannot be checked (fail closed)")
+    return LIT.sub("\"\"", s), LIT.findall(s)
+(so, lo), (sn, ln) = skel(old), skel(new)
+if so != sn:
+    fail("text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer)")
+changed = [(a, b) for a, b in zip(lo, ln) if a != b]
+if not changed:
+    fail("no version value changed")
+VER = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._:@/-]*$")
+for a, b in changed:
+    if not (re.search(r"[0-9]", a) and re.search(r"[0-9]", b)):
+        fail("literal \"%s\" -> \"%s\" is not a version value" % (a, b))
+    if not VER.match(b) or re.search(r"latest|snapshot", b, re.I):
+        fail("\"%s\" is not an exact pinned version (no ranges, +, whitespace, latest, or SNAPSHOT)" % b)
+'
+}
+if [ "$caller" = "$LEDGER_EDITOR" ] && [ "$rel" = "$LEDGER_PATH" ]; then
+  tn="$(sc_field tool_name)"
+  [ "$tn" = "Edit" ] || sc_block "$caller may change $path only with the Edit tool (got $tn). Whole-file writes and multi-edits of the dependency ledger belong to build-engineer."
+  why="$(ledger_value_edit)" || sc_block "the ledger value check could not run (fail closed)."
+  [ -z "$why" ] && exit 0
+  sc_block "$caller may change only version values in $path: $why. Route structural changes to build-engineer (BLOCKED-ON OWNER: build-engineer)."
+fi
 
 # build-engineer's .gitkeep exception (finding 9): an EMPTY Write only, and never inside .claude/**,
 # docs/agent-runs/**, or a path whose first-match owner is factory-engineer, human, or generated.

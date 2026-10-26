@@ -1,0 +1,276 @@
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+index cfcb13c..b3e1223 100755
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -6,7 +6,8 @@
+ #   KMS, EMR, ECS, and every other service); destructive database statements; non-Terraform IaC;
+ #   Bash writes to constitutional files by anyone except factory-engineer; forged test markers;
+ #   writes to human evidence; operational scripts run by the wrong agent or environment; dataset
+-#   scripts outside the section 7b map; and any non-evidence command from a read-only agent.
++#   scripts outside the section 7b map (including non-literal arguments, launchers, and copies of
++#   dataset scripts); computed command words; and any non-evidence command from a read-only agent.
+ #   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts (section 12).
+ # The message names the legitimate path so a block becomes routing, not a retry loop.
+ # Fails closed: without Python or with unparseable input every command is blocked.
+@@ -929,18 +930,46 @@ dataset_script_check() {
+   if [ "$runners" != "*" ] && ! in_list "$caller" "$runners"; then
+     sc_block "$caller may not run datasets/scripts/$name.sh. Allowed: $runners (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer."
+   fi
+-  # Fail closed: a dataset script must not be pointed at a protected path (constitutional files,
+-  # human evidence, the test marker, git configuration) through --out, --dest, --root, or similar.
+-  if has "$SEG" "($PATH_ALT_CONST|$PATH_ALT_LOCAL|$PATH_ALT_MARKER|$PATH_ALT_EVIDENCE|$PATH_ALT_HUMAN_GATE|$PATH_ALT_GITCFG|\.git/)"; then
+-    sc_block "datasets/scripts/$name.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."
++  # Phase-03 Round 3 (code review MAJOR 1): every check below reads the script's arguments or the
++  # command text, so the arguments must be literal and visible, and the checks read the WHOLE command
++  # ($cmd), not only the current segment. Fail closed for every caller and every mapped script.
++  if [ "${DS_LAUNCHED:-0}" = 1 ]; then
++    sc_block "datasets/scripts/$name.sh started by a launcher (xargs, parallel, find -exec) receives arguments at run time, so the section 7b checks cannot see them (fail closed). Run it directly from the repository root as 'bash datasets/scripts/$name.sh <literal arguments>'."   # R3-LAUNCH
++  fi
++  for a in "$@"; do
++    case "$a" in
++      *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*|*'~'*)
++        sc_block "argument '$a' of datasets/scripts/$name.sh is not literal (variable, command substitution, glob, brace, or ~), so the section 7b checks cannot verify it (fail closed). Spell the value out." ;;   # R3-ARGLIT
++    esac
++  done
++  if has "$cmd" '[$`]|[<>]\('; then
++    sc_block "a command that runs datasets/scripts/$name.sh must not contain \$, a backtick, or process substitution anywhere: a variable or substitution can supply --full or a protected path at run time (fail closed). Use literal arguments and run any other command separately."   # R3-EXPAND
++  fi
++  # Shell state that changes what the script does without appearing in its arguments: startup files
++  # (BASH_ENV, ENV), PATH and shell options, exported functions (curl() { ...; }; export -f curl),
++  # and sourced files. Environment assignments are allowed only for the variables the scripts document.
++  if has "$cmd" '(^|[;&|(]|then|do|else|[{!])[[:space:]]*(export|declare|typeset|readonly|function|source|\.)([[:space:]]|$)|\(\)|bash_func_'; then
++    sc_block "a command that runs datasets/scripts/$name.sh must not export, declare, source, or define functions: they change the script's behaviour without appearing in its arguments (fail closed). Run the script alone with literal arguments."   # R3-SHELLSTATE
++  fi
++  for a in $(printf '%s\n' "$cmd" | grep -oE "(^|[[:space:];&|(])[a-z_][a-z0-9_]*=" | tr -d ' ;&|(='); do
++    case "$a" in
++      scholarchain_data_dir|scholarchain_crossref_mailto|sc_curl_max_time|sc_curl_min_rate|sc_curl_time_floor) ;;
++      *) sc_block "the environment assignment '$a=' in a command that runs datasets/scripts/$name.sh can change the script's behaviour (BASH_ENV, ENV, PATH, SHELLOPTS, ...), so it is blocked (fail closed). Allowed: SCHOLARCHAIN_DATA_DIR, SCHOLARCHAIN_CROSSREF_MAILTO, SC_CURL_MAX_TIME, SC_CURL_MIN_RATE, SC_CURL_TIME_FLOOR with literal values." ;;   # R3-ENVASSIGN
++    esac
++  done
++  # A dataset script must not be pointed at a protected path (constitutional files, human evidence,
++  # the test marker, git configuration) through --out, --dest, --root, an environment variable, or
++  # any other part of the command.
++  if has "$cmd" "($PATH_ALT_CONST|$PATH_ALT_LOCAL|$PATH_ALT_MARKER|$PATH_ALT_EVIDENCE|$PATH_ALT_HUMAN_GATE|$PATH_ALT_GITCFG|\.git/)"; then
++    sc_block "datasets/scripts/$name.sh is named in a command that also names a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."   # R3-PROTWHOLE
+   fi
+   case "$name" in
+     fetch)
+       for a in "$@"; do
+-        case "$a" in --full|--full=*) sc_block "datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the size estimate, and the destination as MANUAL ACTION REQUIRED." ;; esac
++        case "$a" in --full|--full=*) sc_block "datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the size estimate, and the destination as MANUAL ACTION REQUIRED." ;; esac   # R2-FULLARG
+       done
+-      if has "$SEG" "(^|[[:space:]\"'])--full([=[:space:]\"']|$)"; then
+-        sc_block "datasets/scripts/fetch.sh with --full anywhere in the command is human-invoked only (docs/agents.md section 7b). Report the request as MANUAL ACTION REQUIRED."
++      if has "$cmd" "(^|[[:space:]\"'=])--full([=[:space:]\"']|$)"; then
++        sc_block "datasets/scripts/fetch.sh in a command that contains --full anywhere is human-invoked only (docs/agents.md section 7b). Report the request as MANUAL ACTION REQUIRED."   # R3-FULLWHOLE
+       fi ;;
+     record-sample-checksums)
+       if [ "$caller" != "dataset-engineer" ]; then
+@@ -970,6 +999,20 @@ script_check() {   # <executed path word> <script arguments...> (the first argum
+     dataset_script_check "${rel#datasets/scripts/}" "$@"
+     return 0
+   fi
++  # Phase-03 Round 3 (Round 2 residual R6-R8): a file named like a dataset script (or lib.sh) that
++  # does not resolve into the repository's datasets/scripts/ is a copy (/tmp/fetch.sh,
++  # /tmp/x/datasets/scripts/fetch.sh) and cannot be checked against section 7b, so it is blocked.
++  local pb a
++  pb="$(base_of "${p//\\//}")"
++  if [[ "$pb" =~ ^([a-z0-9_-]+)\.sh$ ]] && { [ "${BASH_REMATCH[1]}" = lib ] || [ "$(dataset_script_runners "${BASH_REMATCH[1]}")" != unknown ]; }; then
++    sc_block "'$p' has the name of a dataset script but is not in the repository's datasets/scripts/ directory. A copy cannot be checked against docs/agents.md section 7b, so it is blocked (fail closed). Run 'bash datasets/scripts/$pb' from the repository root."   # R3-COPYNAME
++  fi
++  if [[ "$rel" != scripts/* ]]; then
++    # A script outside both mapped trees (a renamed copy) must not receive --full (Round 3, R8).
++    for a in "$@"; do
++      case "$a" in --full|--full=*) sc_block "'$p' is outside the mapped script directories and is called with --full. A renamed copy of datasets/scripts/fetch.sh would bypass section 7b this way, so it is blocked (fail closed). Bulk downloads are human-invoked only." ;; esac   # R3-OUTFULL
++    done
++  fi
+   if [[ "$rel" != scripts/* ]]; then
+     # Resolves into neither tree (a copy in /tmp, a nested scripts/ directory elsewhere): the
+     # section 7 map still applies by name, fail closed, as before this amendment.
+@@ -1032,6 +1075,21 @@ exec_at() {   # <index> <depth> <piped>
+     ( toks_of "${W[*]:i}"; exec_scan $((depth+1)) "$piped" ) || exit 2
+   fi
+   if in_list "$b" "$LAUNCHERS"; then
++    # Phase-03 Round 3: the program a launcher starts must be a literal word. '{}' (find -exec {},
++    # xargs -I{} {}), a variable, a glob, or parallel's ':::' command lists run a program chosen at
++    # run time, which no script map can check.
++    if [ "$b" = find ]; then
++      for ((j=i+1; j<n; j++)); do
++        case "${W[j]}" in -exec|-execdir|-ok|-okdir) launched10 "${W[j+1]:-}" "$b" ;; esac
++      done
++    elif [ "$b" = xargs ] || [ "$b" = parallel ]; then
++      j=$((i+1))
++      while (( j < n )) && [[ "${W[j]}" == -* ]]; do
++        case "${W[j]}" in -i|-n|-p|-l|-s|-d|-e|-a|-j|--arg-file|--delimiter|--max-args|--max-procs|--eof|--replace) j=$((j+2)) ;; *) j=$((j+1)) ;; esac
++      done
++      launched10 "${W[j]:-}" "$b"
++    fi
++    DS_LAUNCHED=1
+     j=$((i+1))
+     if [ "$b" = find ]; then
+       while (( j < n )); do case "${W[j]}" in -exec|-execdir|-ok|-okdir) break ;; esac; j=$((j+1)); done
+@@ -1050,6 +1108,7 @@ exec_at() {   # <index> <depth> <piped>
+       [[ "$t" == *.sh ]] && script_check "$t" "${W[@]:j+1}"
+       j=$((j+1))
+     done
++    DS_LAUNCHED=0
+     return 0
+   fi
+   if is_interp "$b"; then
+@@ -1085,6 +1144,13 @@ exec_at() {   # <index> <depth> <piped>
+     return 0
+   fi
+   if [ "$t" != "[" ] && [ "$t" != "[[" ] && nonliteral "$t"; then
++    # Phase-03 Round 3: a command word the shell computes ($X, $(...), `...`, a glob or brace) can be
++    # any script ('X=datasets/scripts/fetch.sh; $X dblp --full'), so it is blocked for every caller.
++    # A redirection placed first ('>file cmd') is not affected.
++    case "$t" in
++      *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*)
++        sc_block "the command word '$t' is computed at run time (variable, substitution, glob, or brace), so the program it runs cannot be checked against the script maps in docs/agents.md sections 7 and 7b (fail closed). Name the program literally." ;;   # R3-CMDWORD
++    esac
+     for ((j=i+1; j<n; j++)); do
+       if [[ "${W[j]}" == *.sh ]] || [[ "${W[j]}" == *scripts/* ]]; then
+         sc_block "a non-literal command word ('$t') with a script argument ('${W[j]}') cannot be verified (fail closed). Run 'scripts/<name>.sh <env>' directly."
+@@ -1094,6 +1160,14 @@ exec_at() {   # <index> <depth> <piped>
+   return 0
+ }
+ 
++launched10() {   # <word> <launcher>: the program started by xargs, parallel, or find -exec
++  case "$1" in
++    *'{'*|*'$'*|*'`'*|*'*'*|*'?'*|*'['*|':::'*|'::::'*)
++      sc_block "'$2' starts a program chosen at run time ('$1'), so it cannot be checked against the script maps in docs/agents.md sections 7 and 7b (fail closed). Name the program literally, for example 'find <dir> -name x -exec bash -n {} ;'." ;;   # R3-LAUNCHWORD
++  esac
++  return 0
++}
++
+ while IFS= read -r SEG; do
+   piped=0
+   case "$SEG" in "@pipe@ "*) piped=1; SEG="${SEG#@pipe@ }" ;; esac
+@@ -1102,6 +1176,74 @@ while IFS= read -r SEG; do
+   exec_scan 0 "$piped"
+ done <<< "$segments10"
+ 
++# ---- 10c. Copies of dataset scripts (phase-03 Round 3; Round 2 residual R5-R8) ------------------
++# Section 7b is checked when a dataset script is RUN from datasets/scripts/. A copy, link, or rename
++# elsewhere ('cp datasets/scripts/fetch.sh /tmp/g.sh; bash /tmp/g.sh dblp --full') would escape it.
++# Narrow, name-based fence for every caller: a pipeline that names a dataset script (or the
++# datasets/scripts directory) as DATA, not as the script it runs, must not write files (a redirect,
++# tee, cp, ln, mv, install, rsync, tar, sed, awk, an interpreter, curl, ...). The same holds when
++# the working directory is inside datasets/, or a cd changes it in a command that names datasets.
++# Not covered (docs/agents.md section 4, enforcement limits): copies made by a program internally,
++# multi-step copies through globs from a directory named in an earlier call, and edited copies.
++DS_NAME_RE='datasets[/\\]+scripts|(^|[^a-z0-9_.-])(fetch|fetch-by-id|lib|validate-datasets|record-sample-checksums|sample-extract)\.sh([^a-z0-9_.-]|$)'
++DS_COPY_W=" cp ln link install mv rsync dd tee tar bsdtar zip 7z 7za cpio pax scp sftp sed awk gawk mawk nawk perl python python3 py pythonw node nodejs ruby php pwsh powershell curl wget busybox split csplit uudecode "
++ds_writes() {   # <text>: true when the text can write a file
++  local -a TT
++  local t
++  has "$1" '>' && return 0
++  read -ra TT <<< "$(printf '%s' "$1" | tr "\"';&|()\`" '        ')"
++  for t in "${TT[@]}"; do in_list "$(base_of "$t")" "$DS_COPY_W" && return 0; done
++  has "$1" '(^|[[:space:]/])git([[:space:]].*)?[[:space:]](archive|checkout-index|worktree|clone|bundle)([[:space:]]|$)|[[:space:]]--o(u(t(p(u(t)?)?)?)?)?[=[:space:]]' && return 0
++  return 1
++}
++ds_run_stage() {   # <pipeline stage>: true when the stage RUNS a script that resolves into datasets/scripts/
++  local i=0 n t b w=0 cls
++  toks_of "$1"; n=${#W[@]}
++  while (( i < n )); do
++    t="${W[i]}"; b="$(base_of "$t")"
++    if [[ "$t" =~ ^[a-z_][a-z0-9_]*= ]] || in_list "$t" "$KEYWORDS"; then i=$((i+1)); continue; fi
++    if in_list "$b" "$WRAPPERS"; then w=1; i=$((i+1)); continue; fi
++    if (( w )) && [[ "$t" =~ ^(-.*|[0-9.]+[smhd]?)$ ]]; then i=$((i+1)); continue; fi
++    break
++  done
++  (( i < n )) || return 1
++  t="${W[i]}"; b="$(base_of "$t")"
++  if is_interp "$b" || aws_is_py "$b"; then
++    i=$((i+1))
++    while (( i < n )) && [[ "${W[i]}" == -* ]]; do
++      if is_interp "$b"; then [[ "${W[i]}" =~ ^-[a-z]*[cs] ]] && return 1
++      else [[ "${W[i]}" =~ ^-[a-z]*[cm] ]] && return 1; fi
++      i=$((i+1))
++    done
++    t="${W[i]:-}"
++  fi
++  { [[ "$t" == *.sh ]] || [[ "$t" == *.py ]]; } || return 1
++  nonliteral "$t" && return 1
++  cls="$(sc_classify_path "${t//\\//}")" || return 1
++  cls="$(printf '%s' "$cls" | tr '[:upper:]' '[:lower:]')"
++  [[ "$cls" == "rel datasets/scripts/"* ]]
++}
++ds_copy_block() {
++  sc_block "a dataset script (datasets/scripts/*.sh) is named as data in a command that can write files ('$1'). A copy, link, or rename elsewhere would run outside the section 7b map, so this is blocked for every caller (fail closed; docs/agents.md section 7b). Read it with the Read tool, cat, or grep; dataset-engineer edits it with Write or Edit."
++}
++ds_cwd="$(sc_classify_path ".")" || ds_cwd=""
++ds_cwd="$(printf '%s' "$ds_cwd" | tr '[:upper:]' '[:lower:]')"
++if { [ "$ds_cwd" = "rel datasets" ] || [[ "$ds_cwd" == "rel datasets/"* ]]; } && ds_writes "$cmd10"; then
++  ds_copy_block "working directory ${ds_cwd#rel }"   # R3-COPYCWD
++fi
++if [ "$DIRCHANGE" = 1 ] && has "$cmd" 'datasets' && ds_writes "$cmd10"; then
++  ds_copy_block "directory change into datasets"   # R3-COPYCD
++fi
++while IFS= read -r ds_p; do
++  has "$ds_p" "$DS_NAME_RE" || continue
++  ds_ref=0
++  while IFS= read -r ds_st; do
++    has "$ds_st" "$DS_NAME_RE" || continue
++    ds_run_stage "$ds_st" || { ds_ref=1; break; }
++  done <<< "$(printf '%s\n' "$ds_p" | tr '|' '\n')"
++  if [ "$ds_ref" = 1 ] && ds_writes "$ds_p"; then ds_copy_block "$ds_p"; fi   # R3-COPYPIPE
++done <<< "$(printf '%s\n' "$cmd10" | sed -E 's/\|\|/;/g' | tr ';&' '\n\n')"
++
+ # ---- 11. Read-only agents and unregistered subagents: evidence-gathering commands only ----------
+ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" || ! in_list "$caller" "$ROSTER"; }; then
+   ro_block() {
+diff --git a/docs/agents.md b/docs/agents.md
+index 2fe8c2a..0f20f53 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -57,7 +57,7 @@ These refinements keep section 2's intent and make it exact for this repository.
+ 
+ Exactly one writer per path, with one ratified exception: the dependency-ledger row splits `project/Versions.scala` by verb, version values versus everything else (section 3, refinement 4). The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every Write or Edit to it is blocked until an amendment assigns one.
+ 
+-Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). It does not detect writes that a program makes internally without naming the path on the command line, or writes through symlinks.
++Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). For every caller it also blocks copying, linking, or moving a dataset script out of `datasets/scripts/` (section 7b, copies). It does not detect writes that a program makes internally without naming the path on the command line, or writes through symlinks.
+ 
+ Ledger value check (guard-ownership.sh, `LEDGER_PATH` and `LEDGER_EDITOR`). An Edit by dependency-updater to `project/Versions.scala` passes only if three things hold. First, replacing every one-line double-quoted literal in `old_string` and `new_string` with `""` leaves identical text, so no `val`, name, comment, operator, or entry is added, removed, or changed. Second, every changed literal contains a digit before and after the edit. Third, the new literal matches `^[0-9A-Za-z][0-9A-Za-z._:@/-]*$` and contains neither `latest` nor `SNAPSHOT`. A backslash or an unbalanced quote fails closed, and Write, MultiEdit, and NotebookEdit are refused. Two things are not mechanical and rest on the role file plus code-reviewer: a Bash write to the ledger, and whether a well-formed value is the right one (for example a major bump, or a Hadoop or Spark value that EMR does not ship).
+ 
+@@ -144,7 +144,7 @@ If a request matches no row, or matches two rows in a way the trigger vocabulary
+ 
+ Approved environments: `dev`. Adding an environment is a constitutional amendment.
+ 
+-Path resolution. The guard resolves each executed script path against the command's working directory, case-insensitively, before it picks a map. A path that resolves into the repository-root `scripts/` directory uses the table below. A path that resolves into `datasets/scripts/` uses section 7b. A path that resolves into neither but ends in `scripts/<name>.sh`, such as a copy in a temp directory or a nested `scripts/` directory, is still checked against the table below by name (fail closed). Any `cd`, `pushd`, `popd`, `env -C`, or `--chdir` combined with running a script is blocked, unless its literal target is the repository root. A directory change therefore cannot change which map applies.
++Path resolution. The guard resolves each executed script path against the command's working directory, case-insensitively, before it picks a map. A path that resolves into the repository-root `scripts/` directory uses the table below. A path that resolves into `datasets/scripts/` uses section 7b. A path that resolves into neither but ends in `scripts/<name>.sh`, such as a copy in a temp directory or a nested `scripts/` directory, is still checked against the table below by name (fail closed). Any `cd`, `pushd`, `popd`, `env -C`, or `--chdir` combined with running a script is blocked, unless its literal target is the repository root. A directory change therefore cannot change which map applies. Two more rules apply to every caller and every command, so that the program that runs is always visible. A command word the shell computes at run time (`$X`, `$(...)`, backticks, a glob, or a brace) is blocked. The program that `xargs`, `parallel`, or `find -exec` starts must be a literal word: `{}`, a variable, a glob, or parallel's `:::` command lists are blocked.
+ 
+ Script interface contract for infra-engineer: every script in `ENV` below takes the environment name as its first positional argument, uses bash strict mode, has no interactive prompts, and prints greppable step markers.
+ 
+@@ -182,9 +182,28 @@ Run them from the repository root as `bash datasets/scripts/<name>.sh ...`.
+ 
+ Additional rules:
+ - The ask prompt is enforced in two places. settings.json has ask rules for the repository-relative forms. guard-dangerous.sh also returns a permission decision of `ask` for any dataset-engineer command that names `fetch.sh` or `fetch-by-id.sh`, so absolute-path and other forms prompt too.
+-- A dataset-script command that also names a protected path is blocked. Protected paths are the constitutional files, `docs/agent-runs/**`, `human-gate.md`, `.claude/.last-test-run`, and `.git/`.
++- Literal, visible arguments. Every check in this table reads the whole command, not only the part that runs the script. For every caller, a command that runs a dataset script is blocked when:
++  - a launcher (`xargs`, `parallel`, `find -exec`) starts the script, because it receives its arguments at run time;
++  - any argument of the script is not literal (a variable, command substitution, glob, brace, or `~`);
++  - the command contains `$`, a backtick, or process substitution (`<(`, `>(`) anywhere, even in an unrelated part or inside quotes;
++  - the command exports, declares, sources, or defines functions (`export`, `declare`, `typeset`, `readonly`, `function`, `source`, `.`, `name()`);
++  - the command assigns any environment variable except `SCHOLARCHAIN_DATA_DIR`, `SCHOLARCHAIN_CROSSREF_MAILTO`, `SC_CURL_MAX_TIME`, `SC_CURL_MIN_RATE`, and `SC_CURL_TIME_FLOOR` (this blocks `BASH_ENV`, `ENV`, `PATH`, and `SHELLOPTS`);
++  - the command names a protected path anywhere. Protected paths are the constitutional files, `docs/agent-runs/**`, `human-gate.md`, `.claude/.last-test-run`, and `.git/`;
++  - for `fetch.sh`, the command contains `--full` anywhere.
++  These rules are fail closed. Run each dataset script alone, from the repository root, with literal arguments.
++- Copies. Section 7b applies only where the script resolves into `datasets/scripts/`, so for every caller the guard also blocks these:
++  - running a file named like a dataset script or `lib.sh` from anywhere else (`/tmp/fetch.sh`, `/tmp/x/datasets/scripts/fetch.sh`);
++  - running any script outside both mapped directories with `--full`;
++  - any pipeline that names a dataset script or the `datasets/scripts` directory as data (not as the script it runs) and can write files, through a redirect, `tee`, `cp`, `ln`, `mv`, `install`, `rsync`, `tar`, `sed`, `awk`, an interpreter, `curl`, `wget`, or `git archive|checkout-index|worktree|clone|bundle` or `--output`;
++  - any command that can write files, if the working directory is inside `datasets/` or the command changes into a directory while it names `datasets`.
++  Reading a dataset script with the Read tool, `cat`, `grep`, or `git diff` is still allowed.
+ - The read-only fence (code-reviewer) still allows only `bash -n` on these scripts.
+-- The guard does not check `datasets/scripts/validate_datasets.py`, `datasets/tests/run-tests.sh`, or scripts that another script calls internally. Those rely on the role file and review (section 4, enforcement limits).
++- Not fenced by the guard. These rely on the permission prompt where no allow rule matches, the role file, and review (section 4, enforcement limits):
++  - `datasets/scripts/validate_datasets.py`, `datasets/tests/run-tests.sh`, and scripts that another script calls internally;
++  - wrappers such as `make`;
++  - a copy that a program makes internally without naming a dataset script on the command line, or a multi-step copy from a directory named in an earlier call;
++  - running a renamed copy without `--full` (for example `bash /tmp/g.sh dblp --plan`);
++  - direct network downloads with `curl` or `wget` that do not use the dataset scripts at all.
+ 
+ ## 8. Escalation policy
+ 

@@ -13,6 +13,18 @@
 *.yml        text eol=lf
 *.yaml       text eol=lf
 Dockerfile   text eol=lf
+*.py         text eol=lf
+*.tsv        text eol=lf
+*.md         text eol=lf
+
+# Checksummed dataset samples: datasets/samples/SHA256SUMS records raw-byte hashes, so git
+# must never convert these bytes in either direction (commit or checkout), whatever the
+# user's core.autocrlf or core.eol. -text (rather than eol=lf) is deliberate: eol=lf would
+# still normalize CRLF to LF on commit, which would silently change the hash of any sample
+# that is meant to contain CR bytes (RFC 4180 CSV, a malformed-input fixture). -eol clears
+# any inherited eol so no rule above can re-enable conversion. diff stays enabled so the
+# samples remain reviewable. This rule must stay after the extension rules (last match wins).
+datasets/samples/** -text -eol
 
 # Binary artifacts are never diffed or normalized.
 *.jar   binary

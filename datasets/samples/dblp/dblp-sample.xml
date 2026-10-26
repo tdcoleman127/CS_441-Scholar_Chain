@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE dblp SYSTEM "dblp.dtd">
+<!-- ScholarChain synthetic DBLP sample. Authored by dataset-engineer, phase 03. CC0-1.0.
+     Every record, person, and identifier below is FICTIONAL. Josiah Carberry is ORCID's and
+     Crossref's documented fictitious demonstration person. DOIs use the Crossref test prefix
+     10.5555. Layout mirrors the real dump: ISO-8859-1 header, pure ASCII bytes, non-ASCII
+     characters as DTD-declared symbolic entities or numeric character references. -->
+<dblp>
+<inproceedings key="conf/scsample/CarberryMS24" mdate="2024-06-03" cdate="2024-05-20">
+<author orcid="0000-0002-1825-0097">Josiah Carberry</author>
+<author>J&uuml;rgen M&uuml;ller</author>
+<author>Ada Sample 0001</author>
+<title>Provenance-Preserving Coauthorship Graphs for Scholarly Linking.</title>
+<pages>101-112</pages>
+<year>2024</year>
+<booktitle>SCSAMPLE</booktitle>
+<ee>https://doi.org/10.5555/sc441.0001</ee>
+<crossref>conf/scsample/2024</crossref>
+<url>db/conf/scsample/scsample2024.html#CarberryMS24</url>
+</inproceedings>
+<article key="journals/corr/abs-2401-99901" mdate="2024-01-15" publtype="informal">
+<author orcid="0000-0002-1825-0097">Josiah Carberry</author>
+<author>J&uuml;rgen M&uuml;ller</author>
+<author>Ada Sample 0001</author>
+<title>Provenance-Preserving Coauthorship Graphs for Scholarly Linking.</title>
+<journal>CoRR</journal>
+<volume>abs/2401.99901</volume>
+<year>2024</year>
+<ee>https://arxiv.org/abs/2401.99901</ee>
+<url>db/journals/corr/corr2401.html#abs-2401-99901</url>
+</article>
+<article key="journals/scsample/SampleIP23" mdate="2023-11-02">
+<author>Ada Sample 0002</author>
+<author>Zo&euml; Ib&aacute;&ntilde;ez</author>
+<author>&#321;ucja Pr&oacute;bka</author>
+<title>Disambiguating Homonymous Authors at <i>Scale</i>: H<sub>2</sub> Heuristics.</title>
+<pages>1-20</pages>
+<year>2023</year>
+<volume>7</volume>
+<number>3</number>
+<journal>J. Sample Data</journal>
+<ee>https://doi.org/10.5555/sc441.0002</ee>
+<url>db/journals/scsample/scsample7.html#SampleIP23</url>
+</article>
+<article key="journals/scsample/SampleP25" mdate="2025-02-10">
+<author>Ada Sample 0001</author>
+<author>S&oslash;ren Pr&oslash;ve</author>
+<author>Nguy&#7877;n Th&#7883; M&#7851;u</author>
+<author>Collab Member 01</author>
+<author>Collab Member 02</author>
+<author>Collab Member 03</author>
+<author>Collab Member 04</author>
+<author>Collab Member 05</author>
+<author>Collab Member 06</author>
+<author>Collab Member 07</author>
+<author>Collab Member 08</author>
+<author>Collab Member 09</author>
+<author>Collab Member 10</author>
+<author>Collab Member 11</author>
+<author>Collab Member 12</author>
+<author>Collab Member 13</author>
+<author>Collab Member 14</author>
+<author>Collab Member 15</author>
+<author>Collab Member 16</author>
+<author>Collab Member 17</author>
+<author>Collab Member 18</author>
+<author>Collab Member 19</author>
+<author>Collab Member 20</author>
+<author>Collab Member 21</author>
+<title>A Collaborative Benchmark for Entity Resolution in Bibliographic Data.</title>
+<pages>45-71</pages>
+<year>2025</year>
+<volume>9</volume>
+<journal>J. Sample Data</journal>
+<ee>https://doi.org/10.5555/sc441.0003</ee>
+<url>db/journals/scsample/scsample9.html#SampleP25</url>
+</article>
+<inproceedings key="conf/scsample/Sample00" mdate="2019-03-01">
+<author>Ada Sample</author>
+<title>Notes on Missing Metadata.</title>
+<booktitle>SCSAMPLE</booktitle>
+<url>db/conf/scsample/scsample2000.html#Sample00</url>
+</inproceedings>
+<proceedings key="conf/scsample/2024" mdate="2024-05-20">
+<editor>Josiah Carberry</editor>
+<editor>Zo&euml; Ib&aacute;&ntilde;ez</editor>
+<title>Proceedings of the Sample Workshop on Scholarly Chains, SCSAMPLE 2024</title>
+<publisher>Sample Press</publisher>
+<year>2024</year>
+<isbn>978-0-00-000000-0</isbn>
+<url>db/conf/scsample/scsample2024.html</url>
+</proceedings>
+<article mdate="2024-08-08">
+<author>Ada Sample 0003</author>
+<title>Record Without a Key Attribute.</title>
+<year>20x4</year>
+<journal>J. Sample Data</journal>
+</article>
+<www key="homepages/99/990001" mdate="2024-01-01">
+<author>Ada Sample 0001</author>
+<author>Ada B. Sample 0001</author>
+<title>Home Page</title>
+<url>https://example.org/~asample</url>
+<note type="affiliation">Example University, Sampleton</note>
+</www>
+<www key="homepages/99/990002" mdate="2023-01-01">
+<author>Ada Sample 0002</author>
+<title>Home Page</title>
+<note type="affiliation">Instituto de Ejemplo</note>
+</www>
+<www key="homepages/99/990009" mdate="2023-06-01">
+<crossref>homepages/99/990001</crossref>
+</www>
+</dblp>

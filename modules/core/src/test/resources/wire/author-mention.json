@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "mentionId": "mention:v1:6b7f517df8cd9fa35a83284f23aab20ccfc256d34cff069b741416b9af94779b",
+  "workId": "work:dblp:conf/kdd/CarberrySmith24",
+  "authorPosition": 0,
+  "rawName": "Josiah Carberry",
+  "normalizedName": "josiah carberry",
+  "orcid": "0000-0002-1825-0097",
+  "affiliationText": null,
+  "provenance": {
+    "sourceDataset": "dblp",
+    "sourceRecordId": "conf/kdd/CarberrySmith24",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

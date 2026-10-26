@@ -5,8 +5,10 @@
 #   secret reads; destructive or mutating AWS CLI calls (S3, DynamoDB, Neptune, S3 Vectors, ECR,
 #   KMS, EMR, ECS, and every other service); destructive database statements; non-Terraform IaC;
 #   Bash writes to constitutional files by anyone except factory-engineer; forged test markers;
-#   writes to human evidence; operational scripts run by the wrong agent or environment; and any
+#   writes to human evidence; operational scripts run by the wrong agent or environment; dataset
+#   scripts outside the section 7b map (including protected paths after normalization); and any
 #   non-evidence command from a read-only agent.
+#   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts (section 12).
 # The message names the legitimate path so a block becomes routing, not a retry loop.
 # Fails closed: without Python or with unparseable input every command is blocked.
 # Owner: factory-engineer (constitutional artifact). Keep ROSTER and the maps in sync with docs/agents.md.
@@ -37,6 +39,18 @@ script_runners() {
 }
 # scripts whose first positional argument must be an approved environment
 ENV_SCRIPTS=" plan deploy rollback smoke-test run-bounded-pipeline "
+# Phase-03 amendment A (docs/agents.md section 7b): datasets/scripts/<name>.sh -> agents allowed to
+# execute it ("*" = any caller). Extra rules in dataset_script_check: record-sample-checksums
+# without --check (write mode) is dataset-engineer only; fetch --full is blocked for every caller.
+dataset_script_runners() {
+  case "$1" in
+    validate-datasets)       echo "*" ;;
+    record-sample-checksums) echo "*" ;;
+    sample-extract)          echo "dataset-engineer" ;;
+    fetch|fetch-by-id)       echo "dataset-engineer" ;;
+    *)                       echo "unknown" ;;
+  esac
+}
 # ---------------------------------------------------------------------------------------------
 
 SC_INPUT="$(cat)"
@@ -643,13 +657,24 @@ done <<< "$segments"
 # through a glob or variable operand; after a cd into a protected directory; by archive extraction;
 # or by inline interpreter code. Where the target cannot be verified, it blocks (fail closed).
 # 'git config' is a write for every caller except factory-engineer; only exact read forms pass.
+# Phase-03 Round 4 (side finding NF1): Windows 8.3 short names reach protected paths without naming
+# them ('CLAUDE~1/hooks/common.sh' is .claude/hooks/common.sh; 'GIT~1/config' is .git/config), and
+# MSYS bash, cp, tee, and native programs all resolve them. A '~<digit>' in the command therefore
+# counts as naming a protected path (HINT9). An operand or redirect target that contains '~' is
+# never literal (operand9), so it is blocked when it could reach a protected path: its directory is
+# itself non-literal, or it sits in the repository root or a protected directory. An operand in a
+# literal non-protected directory stays allowed ('cp a.txt /tmp/sc/b~1'). HINT9 is also read for
+# xargs/parallel, and SHORT9 by the inline-interpreter check (5), against the WHOLE command line:
+# a command that contains any '~<digit>' (for example HEAD~1) is blocked for every caller if it also
+# runs inline interpreter code ('git diff HEAD~1 | python -c ...') or a non-read-safe xargs target.
+SHORT9='~[0-9]'
 if [ "$caller" = "factory-engineer" ]; then
-  HINT9='agent-runs|human-gate|last-test-run'
+  HINT9="agent-runs|human-gate|last-test-run|$SHORT9"   # R4-SHORTNAME
   PROTDIR9='^(\.|docs|docs/agent-runs(/.*)?)$'
   PROTGLOB9="$PROTDIR9"
   ROOT9="docs"   # protected names directly in the repository root (operand9 globs)
 else
-  HINT9='\.claude|claude\.|claude[*?[]|agent|\.mcp|mcp\.json|human-gate|last-test|\.git/|\.git$|gitconfig'
+  HINT9="\\.claude|claude\\.|claude[*?[]|agent|\\.mcp|mcp\\.json|human-gate|last-test|\\.git/|\\.git\$|gitconfig|$SHORT9"   # R4-SHORTNAME
   PROTGLOB9='^(\.|\.claude(/.*)?|docs|docs/agent-runs(/.*)?|\.git(/.*)?)$'
   PROTDIR9="$PROTGLOB9"
   ROOT9="claude.md .mcp.json .claude docs .git .gitconfig"
@@ -812,7 +837,7 @@ wrap9() {   # <command string> <depth>
             -c|-e|-p|-r|--eval|--print|-command|-encodedcommand|-c?*|-e?*)
               # whole command line: the segmenter splits inline code at ( ) ;
               if { [ "$caller" != "factory-engineer" ] && has "$cmd" "$PATH_ALT_CONST|$PATH_ALT_GITCFG"; } \
-                 || has "$cmd" "$PATH_ALT_MARKER|$PATH_ALT_HUMAN_GATE" \
+                 || has "$cmd" "$PATH_ALT_MARKER|$PATH_ALT_HUMAN_GATE|$SHORT9" \
                  || { [ "$caller" != "orchestrator" ] && has "$cmd" "$PATH_ALT_EVIDENCE"; }; then
                 sc_block "inline $b code that names a protected path $MSG9_UNK"
               fi
@@ -903,20 +928,143 @@ elif has "$cmd" "$CD_RE"; then
   if (( ncd != nok )); then DIRCHANGE=1; fi
 fi
 
-script_check() {   # <executed path word> <next word (environment)>
-  local p="$1" envarg="$2" cls rel script runners
+# ds_prot_hit: print the first word of the whole command ($raw, original case) that resolves to a
+# protected repository path, or nothing. LIMIT (docs/agents.md section 7b, RR-10): the words are
+# fragments split at whitespace, quotes, and shell operators, not the words bash builds; bash joins
+# quoted parts and drops unquoted backslashes, and globs are not expanded, so '.cl'aude'/hooks/x',
+# '.cl\aude/hooks/x', 'docs/agent''-runs/x', and '.claud?/hooks/x' get past this check;
+# each word and each value after an '=' is normalized like sc_classify_path (backslashes become
+# slashes, MSYS drive paths, '.', '..', repeated slashes, case on Windows) and, separately, through
+# os.path.realpath, which also resolves Windows 8.3 short names (CLAUDE~1), trailing dots
+# ('.claude./x', stripped by native Windows programs such as curl.exe), symlinks, and junctions.
+# Either repository-relative result, lower-cased, is matched against: CLAUDE.md, docs/agents.md,
+# .mcp.json, .claude/**, .git/**, docs/agent-runs/**, and any human-gate.md. Fail closed: a word
+# under /proc/ (MSYS /proc/self/cwd is the working directory), a UNC or device path (//x, //?/),
+# a word with an 8.3 short-name form (~<digit>; realpath resolves only names that exist), or a word
+# that cannot be resolved is printed.
+ds_prot_hit() {
+  SC_TEXT="$raw" SC_ROOT="$(sc_repo_root)" SC_CWD="$(sc_field cwd)" PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
+import os, re
+def norm(p):
+    p = (p or "").replace("\\", "/")
+    if os.name == "nt":
+        m = re.match(r"^/(?:cygdrive/|mnt/)?([a-zA-Z])(?:/|$)(.*)$", p)
+        if m:
+            p = m.group(1) + ":/" + m.group(2)
+    return p
+def absn(p, base):
+    p = norm(p)
+    if not os.path.isabs(p):
+        p = os.path.join(base, p)
+    return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+PROT = re.compile(r"^(claude\.md|docs/agents\.md|\.mcp\.json|\.claude|\.git|docs/agent-runs)(/|$)|(^|/)human-gate\.md$")
+def real(p):
+    return os.path.normcase(os.path.realpath(p))
+def hit(target, base):
+    try:
+        rel = os.path.relpath(target, base)
+    except ValueError:
+        return False
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return False
+    rel = rel.replace(os.sep, "/").lower()
+    return rel != "." and bool(PROT.search(rel))
+root = absn(os.environ["SC_ROOT"], os.getcwd())
+cwd = absn(os.environ.get("SC_CWD") or os.environ["SC_ROOT"], root)
+root_r = real(root)
+cands = []
+for t in re.split(r"[\s\"\x27`;&|()<>]+", os.environ["SC_TEXT"]):
+    if not t:
+        continue
+    cands.append(t)
+    cands.extend(t.split("=")[1:])
+for c in cands:
+    if not c:
+        continue
+    n = c.replace("\\", "/")
+    if re.match(r"^/proc(/|$)", n, re.I) or n.startswith("//") or n.startswith("/??/") or re.search(r"~[0-9]", n):
+        print(c)
+        break
+    try:
+        a = absn(c, cwd)
+        found = hit(a, root) or hit(real(a), root_r)
+    except Exception:
+        print(c)
+        break
+    if found:
+        print(c)
+        break
+'
+}
+
+# dataset_script_check <lower-case path below datasets/scripts/> <script arguments...>: the section 7b
+# map. Called only when the executed path RESOLVES (cwd-relative, case-insensitive) into the
+# repository's datasets/scripts/ directory, so a persistent cwd or a relative path cannot bypass it.
+dataset_script_check() {
+  local orig="$1" name="$1" runners a; shift
+  if [[ "$name" =~ ^([a-z0-9_-]+)\.sh$ ]]; then name="${BASH_REMATCH[1]}"; else name="?$name"; fi
+  runners="$(dataset_script_runners "$name")"
+  if [ "$runners" = "unknown" ]; then
+    sc_block "datasets/scripts/$orig is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude."
+  fi
+  if [ "$runners" != "*" ] && ! in_list "$caller" "$runners"; then
+    sc_block "$caller may not run datasets/scripts/$name.sh. Allowed: $runners (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer."
+  fi
+  # Fail closed: a dataset script must not be pointed at a protected path (constitutional files,
+  # human evidence, the test marker, git configuration) through --out, --dest, --root, or similar.
+  if has "$SEG" "($PATH_ALT_CONST|$PATH_ALT_LOCAL|$PATH_ALT_MARKER|$PATH_ALT_EVIDENCE|$PATH_ALT_HUMAN_GATE|$PATH_ALT_GITCFG|\.git/)"; then
+    sc_block "datasets/scripts/$name.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."
+  fi
+  # Phase-03 Round 4 (code review F1): the regex above sees only literal spellings in the current
+  # segment, so '.claude/./hooks/x', '.claude//hooks/x', 'datasets/../.claude/x', '.claude\hooks\x',
+  # 'CLAUDE~1/hooks/x', '.claude./hooks/x', '/proc/self/cwd/.claude/x', and absolute or case-variant
+  # paths would pass it. Every whitespace- and quote-split fragment of the whole command, and every
+  # value after '=' (--out=x, SCHOLARCHAIN_DATA_DIR=x), is resolved (ds_prot_hit) and compared with
+  # the protected paths. Quoting, backslash, and glob spellings are NOT covered (RR-10).
+  local hit
+  hit="$(ds_prot_hit)" || sc_block "could not resolve the paths in a command that runs datasets/scripts/$name.sh (fail closed)."
+  if [ -n "$hit" ]; then
+    sc_block "datasets/scripts/$name.sh is run in a command whose word '$hit' resolves to a protected path (constitutional files, .claude/**, docs/agent-runs/**, human-gate.md, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."   # R4-PROTNORM
+  fi
+  case "$name" in
+    fetch)
+      for a in "$@"; do
+        case "$a" in --full|--full=*) sc_block "datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the size estimate, and the destination as MANUAL ACTION REQUIRED." ;; esac
+      done
+      if has "$SEG" "(^|[[:space:]\"'])--full([=[:space:]\"']|$)"; then
+        sc_block "datasets/scripts/fetch.sh with --full anywhere in the command is human-invoked only (docs/agents.md section 7b). Report the request as MANUAL ACTION REQUIRED."
+      fi ;;
+    record-sample-checksums)
+      if [ "$caller" != "dataset-engineer" ]; then
+        for a in "$@"; do [ "$a" = "--check" ] && return 0; done
+        sc_block "$caller may run datasets/scripts/record-sample-checksums.sh only with --check (verify). Writing datasets/samples/SHA256SUMS is dataset-engineer's (docs/agents.md section 7b)."
+      fi ;;
+  esac
+  return 0
+}
+
+script_check() {   # <executed path word> <script arguments...> (the first argument is the environment)
+  local p="$1" envarg="${2:-}" cls rel script runners
+  shift
   if nonliteral "$p"; then
     sc_block "the executed script or interpreter operand '$p' is not a literal path (variables, globs, ~, redirections). Run operational scripts as 'scripts/<name>.sh <env>' from the repository root."
   fi
   if [ "$DIRCHANGE" = 1 ] && { [[ "$p" == *.sh ]] || [[ "$p" == *scripts* ]]; }; then
-    sc_block "a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('$p') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts/<name>.sh <env>'."
+    sc_block "a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('$p') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts/<name>.sh <env>' or 'bash datasets/scripts/<name>.sh'."
   fi
   cls="$(sc_classify_path "${p//\\//}")" || sc_block "could not normalize the script path '$p' (fail closed)."
   rel=""
   [ "${cls%% *}" = "REL" ] && rel="$(printf '%s' "${cls#* }" | tr '[:upper:]' '[:lower:]')"
+  # Phase-03 amendment A: resolution is anchored. A path that resolves into the repository's
+  # datasets/scripts/ uses the section 7b map; one that resolves into the repository-root scripts/
+  # uses the section 7 map below.
+  if [[ "$rel" == datasets/scripts/* ]]; then
+    dataset_script_check "${rel#datasets/scripts/}" "$@"
+    return 0
+  fi
   if [[ "$rel" != scripts/* ]]; then
-    # Outside the repository's scripts/ (a copy in /tmp, a nested scripts/ directory): the map still
-    # applies by name, as before this checkpoint.
+    # Resolves into neither tree (a copy in /tmp, a nested scripts/ directory elsewhere): the
+    # section 7 map still applies by name, fail closed, as before this amendment.
     pl="$(printf '%s' "${p//\\//}" | tr '[:upper:]' '[:lower:]')"
     [[ "$pl" =~ (^|/)scripts/([a-z0-9_-]+\.sh)$ ]] || return 0
     rel="scripts/${BASH_REMATCH[2]}"
@@ -991,7 +1139,7 @@ exec_at() {   # <index> <depth> <piped>
         fi
         sc_block "'$b' runs the shell '$b2' with arguments supplied at run time (for example 'xargs bash', 'find -exec bash'), so the script cannot be verified against the section 7 map (fail closed). Run 'scripts/<name>.sh <env>' directly, or use 'bash -n' for syntax checks."
       fi
-      [[ "$t" == *.sh ]] && script_check "$t" "${W[j+1]:-}"
+      [[ "$t" == *.sh ]] && script_check "$t" "${W[@]:j+1}"
       j=$((j+1))
     done
     return 0
@@ -1021,11 +1169,11 @@ exec_at() {   # <index> <depth> <piped>
       fi
       return 0
     fi
-    script_check "${W[m]}" "${W[m+1]:-}"
+    script_check "${W[m]}" "${W[@]:m+1}"
     return 0
   fi
   if [[ "$t" == *.sh ]]; then
-    script_check "$t" "${W[i+1]:-}"
+    script_check "$t" "${W[@]:i+1}"
     return 0
   fi
   if [ "$t" != "[" ] && [ "$t" != "[[" ] && nonliteral "$t"; then
@@ -1167,6 +1315,14 @@ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" ||
       *) ro_block "'$c'" ;;
     esac
   done <<< "$segments_raw"
+fi
+
+# ---- 12. Network dataset scripts always ask (phase-03 amendment A, docs/agents.md section 7b) ----
+# Reached only when nothing above blocked. settings.json ask rules cover the repository-relative
+# forms; this covers every other form (absolute paths, cwd-relative names, wrappers). Only
+# dataset-engineer can get here while running them; for any other caller section 10 has blocked.
+if [ "$caller" = "dataset-engineer" ] && has "$cmd" "(^|[/[:space:]\"'\\\\])fetch(-by-id)?\.sh([^a-z0-9_.-]|$)"; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"guard-dangerous: datasets/scripts/fetch.sh and fetch-by-id.sh use the network, so the human approves each run (docs/agents.md section 7b)."}}'
 fi
 
 exit 0

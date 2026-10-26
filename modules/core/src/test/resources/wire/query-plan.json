@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "planId": "plan:v1:60cb4e8cbef1a351b509854c01c359110ea0aeb878dcfb468d71e8f05387cf13",
+  "question": "Who has Josiah Carberry collaborated with since 2020?",
+  "researcherIds": [
+    "researcher:orcid:0000-0002-1825-0097"
+  ],
+  "window": {
+    "startYear": 2020,
+    "endYear": 2024
+  },
+  "steps": [
+    {
+      "operation": "resolve-researcher",
+      "parameters": [
+        {
+          "name": "name",
+          "value": "Josiah Carberry"
+        }
+      ]
+    },
+    {
+      "operation": "find-coauthors",
+      "parameters": [
+        {
+          "name": "limit",
+          "value": "10"
+        }
+      ]
+    },
+    {
+      "operation": "fetch-evidence",
+      "parameters": []
+    }
+  ],
+  "provenance": {
+    "sourceDataset": "scholarchain-runtime",
+    "sourceRecordId": "request-0001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

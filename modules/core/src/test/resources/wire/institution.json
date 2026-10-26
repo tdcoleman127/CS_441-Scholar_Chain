@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "institutionId": "institution:ror:0sample00",
+  "name": "Sample University",
+  "countryCode": "US",
+  "provenance": {
+    "sourceDataset": "openalex",
+    "sourceRecordId": "I0000001",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}

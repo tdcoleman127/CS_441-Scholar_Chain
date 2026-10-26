@@ -1,0 +1,445 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -23,6 +23,7 @@
+ - `sbt fmt`: formats all Scala sources. A hook also formats each Scala file after every write.
+ - `bash .claude/hooks/validate-agent-files.sh`: validates agents, hooks, settings, MCP configuration, and commands.
+ - `scripts/check.sh`, `scripts/plan.sh <env>`, and the other operational scripts: written by infra-engineer and run only by the agents mapped in docs/agents.md section 7.
++- `bash datasets/scripts/validate-datasets.sh` and the other dataset scripts: written by dataset-engineer and run from the repository root only by the agents mapped in docs/agents.md section 7b.
+ - `/deploy`, `/rollback`, `/incident`, `/run-pipeline`, `/experiment`: frozen procedures that name their responsible agent and gates.
+ 
+ ## Laws
+diff --git a/docs/agents.md b/docs/agents.md
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -47,7 +47,7 @@
+ 1. **factory-engineer scope.** The specification row says `.claude/**`. The ratified seed (`.claude/agents/factory-engineer.md`, phase 00) lists `.claude/agents/*`, `.claude/hooks/*`, `.claude/commands/*`, and `.claude/settings.json`. This map keeps the narrower seed list. It does not widen the seed. The remaining `.claude/` paths are `.claude/.last-test-run`, which `sbt check` generates (no agent writes it), and `.claude/settings.local.json`, which is human-local, uncommitted, and written by no agent.
+ 2. **Phase-01 one-time grant.** The phase-01 work order (`docs/agent-runs/phase-01/prompt.md`, written by the human) grants factory-engineer permission to create `docs/agent-runs/README.md` as the evidence-format scaffold, for phase 01 only. Every other `docs/agent-runs/**` file stays human-owned. After phase 01, `docs/agent-runs/README.md` is human-owned too. The ownership hook carries no standing exception for it.
+ 3. **Feature tests and test territories.** Each module owner writes the feature tests for its own behavior changes under `modules/<module>/src/test/**`. Every behavior change ships with a test (CLAUDE.md law 2). `test-engineer` exclusively owns `tests/**`: contracts, integration, end-to-end, and adversarial suites. Those are the designated cross-module test source trees. Neither writes in the other's territory. A defect that a `tests/**` test exposes stays red and goes to the module owner.
+-4. **Dependency ledger.** `dependency-updater` owns version values in the single version ledger that build-engineer creates in phase 02. Until a ratified amendment records the ledger's path in section 4, dependency-updater has no write territory and returns its proposed bumps as a report. Structure, new dependencies, and scopes stay with build-engineer.
++4. **Dependency ledger.** The single version ledger is `project/Versions.scala` (requested in the phase-02 human gate, recorded by the phase-03 amendment). `build-engineer` remains the path owner: structure, `val` names, new or removed entries, comments, scopes, and the three mirror files the build checks against the ledger (`project/build.properties`, `.scalafmt.conf`, `docker/services/Dockerfile`). `dependency-updater` may change only version values, meaning the contents of existing string literals in that file, and only with the Edit tool. This is the only ratified split of one path between two writers (section 4). Bumps of `sbt`, `scalafmt`, or `javaRuntimeImage` also need a mirror-file edit, which dependency-updater cannot make, and the build's ledger consistency check fails while the two disagree. For those three, dependency-updater returns the proposed value as a report, and build-engineer makes the paired edit.
+ 5. **Build-adjacent files.** `.gitattributes` (line endings, for example `*.sh text eol=lf`) and `docker/**` (image definitions) are packaging and build hygiene, so they go to build-engineer.
+ 6. **reports/ split.** `reports/final-report.md` belongs to documentation-engineer. `reports/deployments/**` (deployment and pipeline-run reports) and `reports/releases/**` (release records and manifests) belong to deploy-engineer. Any other `reports/**` path has no owner until an amendment assigns one.
+ 7. **prompts/ split.** `prompts/**` (runtime prompts and their output schemas) belongs to rag-engineer. The entity-resolution adjudication prompt and schema live inside `modules/entity-resolution/**`.
+@@ -55,10 +55,12 @@
+ 
+ ## 4. Ownership map (enforced mechanically for Write and Edit by `.claude/hooks/guard-ownership.sh`)
+ 
+-Exactly one writer per path. The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every Write or Edit to it is blocked until an amendment assigns one.
++Exactly one writer per path, with one ratified exception: the dependency-ledger row splits `project/Versions.scala` by verb, version values versus everything else (section 3, refinement 4). The first matching row wins. Paths are matched case-insensitively. A path that matches no row has no owner, and every Write or Edit to it is blocked until an amendment assigns one.
+ 
+ Enforcement limits. guard-ownership.sh checks this whole map, but only for the Write, Edit, MultiEdit, and NotebookEdit tools. Bash writes (for example `sed -i`, `cp`, `mv`, redirects, scripts, and programs such as python) are not checked against this map. For Bash, the map rests on the permission prompt, the role files, and code-reviewer detection. guard-dangerous.sh (sections 9 and 9b) adds one narrow mechanical layer. It blocks Bash writes to the constitutional paths (the factory-engineer row; all callers except factory-engineer), to `.git` configuration and `git config` writes (all callers except factory-engineer), to `.claude/.last-test-run` and `human-gate.md` (all callers), and to `docs/agent-runs/**` (all callers except the orchestrator). It also blocks those writes when they are hidden inside `bash -c`, `sh -c`, `eval`, `env -S`, `xargs`, `find -exec`, and similar wrappers, and blocks glob or variable operands, cd into protected directories, and archive extraction where the target cannot be verified (fail closed). It does not detect writes that a program makes internally without naming the path on the command line, or writes through symlinks.
+ 
++Ledger value check (guard-ownership.sh, `LEDGER_PATH` and `LEDGER_EDITOR`). An Edit by dependency-updater to `project/Versions.scala` passes only if three things hold. First, replacing every one-line double-quoted literal in `old_string` and `new_string` with `""` leaves identical text, so no `val`, name, comment, operator, or entry is added, removed, or changed. Second, every changed literal contains a digit before and after the edit. Third, the new literal matches `^[0-9A-Za-z][0-9A-Za-z._:@/-]*$` and contains neither `latest` nor `SNAPSHOT`. A backslash or an unbalanced quote fails closed, and Write, MultiEdit, and NotebookEdit are refused. Two things are not mechanical and rest on the role file plus code-reviewer: a Bash write to the ledger, and whether a well-formed value is the right one (for example a major bump, or a Hadoop or Spark value that EMR does not ship).
++
+ | Path | Owner | Gate |
+ |---|---|---|
+ | `CLAUDE.md`, `docs/agents.md`, `.mcp.json`, `.claude/settings.json`, `.claude/agents/*`, `.claude/hooks/*`, `.claude/commands/*` | `factory-engineer` | Human ratification and restart; validator |
+@@ -68,6 +70,7 @@
+ | `docs/incidents/**` | `incident-responder` | Human escalation rules (section 8) |
+ | `docs/**` (all other), `README.md`, `reports/final-report.md` | `documentation-engineer` | Link check, command replay, evidence review |
+ | `reports/deployments/**`, `reports/releases/**` | `deploy-engineer` | Approved plan, smoke tests |
++| `project/Versions.scala` (the dependency ledger) | `build-engineer` (structure, entries, names, comments, scopes); `dependency-updater` (version values only: contents of existing string literals, Edit tool only, ledger value check above) | `sbt check`, vulnerability review, code review |
+ | `build.sbt`, `project/**`, `.scalafmt.conf`, `.gitignore`, `.gitattributes`, `docker-compose*.y*ml`, `compose*.y*ml`, `docker/**`, and empty `.gitkeep` placeholders anywhere except `.claude/**`, `docs/agent-runs/**`, and paths owned by factory-engineer, the human, or generated | `build-engineer` | `sbt check`, code review |
+ | `modules/core/**` | `domain-engineer` | Contract tests, `sbt check`, code review |
+ | `modules/hadoop/**` | `hadoop-engineer` | Sample run, deterministic outputs |
+@@ -80,7 +83,6 @@
+ | `datasets/**` | `dataset-engineer` | Manifest validation |
+ | `infra/terraform/**`, `scripts/**`, `.github/workflows/**` | `infra-engineer` | fmt, validate, plan, `bash -n`, security scan, human approval |
+ | `experiments/**`, `load-tests/**` | `experiment-engineer` | Reproducible run, immutable raw results |
+-| dependency ledger (path set by amendment after phase 02) | `dependency-updater` (version values only) | `sbt check`, vulnerability review |
+ | none (review reports are returned, not written) | `code-reviewer` | Read-only verdict |
+ 
+ Secret material (`.env*`, keys, keystores, `secrets/**`, `*.tfstate`) is never written by any agent. Writes outside the repository are limited to the session scratchpad and temp directories.
+@@ -94,7 +96,7 @@
+ | `factory-engineer` | Read, Grep, Glob, Write, Edit, Bash | Only writer of constitutional paths (ownership hook); human ratification |
+ | `build-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
+ | `domain-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+-| `dataset-engineer` | Read, Grep, Glob, Write, Edit, Bash, WebFetch | Ownership hook; WebFetch asks the human every time |
++| `dataset-engineer` | Read, Grep, Glob, Write, Edit, Bash, WebFetch | Ownership hook; WebFetch asks the human every time; dataset scripts per section 7b (fetch scripts ask; `fetch.sh --full` blocked) |
+ | `hadoop-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `entity-resolution-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `spark-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+@@ -108,7 +110,7 @@
+ | `experiment-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws` | Runs only `scripts/run-experiment.sh` with `experiments/` manifests |
+ | `documentation-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook excludes `docs/agents.md`, `docs/agent-runs/**`, and `docs/incidents/**` |
+ | `incident-responder` | Read, Grep, Glob, Bash, Write, Edit, `mcp__aws-api__call_aws`, aws-docs search/read | Writes only `docs/incidents/**`; may run only rollback and smoke-test scripts |
+-| `dependency-updater` | Read, Grep, Glob, Edit, Bash, WebSearch, WebFetch, GitHub releases read (2 tools) | No Write; no write territory until the ledger amendment |
++| `dependency-updater` | Read, Grep, Glob, Edit, Bash, WebSearch, WebFetch, GitHub releases read (2 tools) | No Write. The ownership hook lets it Edit only version values in `project/Versions.scala` (section 4, ledger value check) and blocks every other path. Bash writes are fenced by instruction and review only |
+ 
+ Two rules apply to every agent and to the orchestrator, through hooks and deny rules. Secrets are never read. AWS is never mutated directly: the guard allows only read-only AWS CLI operations, and every change goes through Terraform (human-applied) or an approved script.
+ 
+@@ -142,6 +144,8 @@
+ 
+ Approved environments: `dev`. Adding an environment is a constitutional amendment.
+ 
++Path resolution. The guard resolves each executed script path against the command's working directory, case-insensitively, before it picks a map. A path that resolves into the repository-root `scripts/` directory uses the table below. A path that resolves into `datasets/scripts/` uses section 7b. A path that resolves into neither but ends in `scripts/<name>.sh`, such as a copy in a temp directory or a nested `scripts/` directory, is still checked against the table below by name (fail closed). Any `cd`, `pushd`, `popd`, `env -C`, or `--chdir` combined with running a script is blocked, unless its literal target is the repository root. A directory change therefore cannot change which map applies.
++
+ Script interface contract for infra-engineer: every script in `ENV` below takes the environment name as its first positional argument, uses bash strict mode, has no interactive prompts, and prints greppable step markers.
+ 
+ | Script | Who may run it through Claude | ENV | Permission prompt |
+@@ -160,6 +164,28 @@
+ 
+ `terraform apply` is denied to every agent. By default the human architect applies the approved plan. Whether `scripts/deploy.sh` may itself apply a human-approved plan checksum is a separate decision. The human must record it in a phase human gate, and it needs an amendment here before infra-engineer writes it.
+ 
++### 7b. Dataset scripts (`datasets/scripts/*.sh`, written by dataset-engineer; enforced by guard-dangerous.sh `dataset_script_runners`)
++
++Run them from the repository root as `bash datasets/scripts/<name>.sh ...`.
++
++| Script | Who may run it through Claude | Permission prompt | Bounds |
++|---|---|---|---|
++| `validate-datasets.sh` | any agent | no | Offline and read-only |
++| `record-sample-checksums.sh --check` | any agent | no | Verify only |
++| `record-sample-checksums.sh` (write mode, no `--check`) | dataset-engineer | no | Rewrites `datasets/samples/SHA256SUMS` only |
++| `sample-extract.sh` | dataset-engineer | no | Offline. Writes only its `--out` file |
++| `fetch.sh` with `--plan` (the default) or `--metadata` | dataset-engineer | ask | Uses the network. The script caps metadata downloads at 50 MiB |
++| `fetch.sh --full` | nobody: human-invoked only, until a ratified amendment and a phase human gate approve a size bound | n/a | blocked |
++| `fetch-by-id.sh` | dataset-engineer | ask | Uses the network. The script caps runs at 500 IDs, 5 arXiv pages, and 5 MiB per response |
++| `lib.sh` | nobody: the other scripts source it | n/a | blocked |
++| any other `datasets/scripts/*.sh` | nobody until an amendment maps it | n/a | blocked |
++
++Additional rules:
++- The ask prompt is enforced in two places. settings.json has ask rules for the repository-relative forms. guard-dangerous.sh also returns a permission decision of `ask` for any dataset-engineer command that names `fetch.sh` or `fetch-by-id.sh`, so absolute-path and other forms prompt too.
++- A dataset-script command that also names a protected path is blocked. Protected paths are the constitutional files, `docs/agent-runs/**`, `human-gate.md`, `.claude/.last-test-run`, and `.git/`.
++- The read-only fence (code-reviewer) still allows only `bash -n` on these scripts.
++- The guard does not check `datasets/scripts/validate_datasets.py`, `datasets/tests/run-tests.sh`, or scripts that another script calls internally. Those rely on the role file and review (section 4, enforcement limits).
++
+ ## 8. Escalation policy
+ 
+ The agent prepares the escalation artifact, then stops. The human decides.
+@@ -221,6 +247,6 @@
+ ## 12. Amendment procedure
+ 
+ 1. The human or the orchestrator states the needed change. factory-engineer restates it in matrix terms: which agent, which column, which enforcement layer.
+-2. factory-engineer edits this file, the affected agent files, and the hook tables (`ROSTER`, `READ_ONLY_AGENTS`, `APPROVED_ENVIRONMENTS`, `script_runners`, `sc_owner`) together. Then it runs `bash .claude/hooks/validate-agent-files.sh`.
++2. factory-engineer edits this file, the affected agent files, and the hook tables (`ROSTER`, `READ_ONLY_AGENTS`, `APPROVED_ENVIRONMENTS`, `script_runners`, `dataset_script_runners`, `sc_owner`, `LEDGER_PATH`, `LEDGER_EDITOR`) together. Then it runs `bash .claude/hooks/validate-agent-files.sh`.
+ 3. factory-engineer presents the full diff with audits and stops.
+ 4. The human ratifies in the phase human gate, commits, and restarts Claude Code. Until then, the previous ratified configuration governs.
+diff --git a/.claude/settings.json b/.claude/settings.json
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ -36,6 +36,15 @@
+       "Bash(scripts/smoke-test.sh *)",
+       "Bash(./scripts/smoke-test.sh *)",
+       "Bash(bash scripts/smoke-test.sh *)",
++      "Bash(bash datasets/scripts/validate-datasets.sh*)",
++      "Bash(datasets/scripts/validate-datasets.sh*)",
++      "Bash(./datasets/scripts/validate-datasets.sh*)",
++      "Bash(bash datasets/scripts/record-sample-checksums.sh*)",
++      "Bash(datasets/scripts/record-sample-checksums.sh*)",
++      "Bash(./datasets/scripts/record-sample-checksums.sh*)",
++      "Bash(bash datasets/scripts/sample-extract.sh *)",
++      "Bash(datasets/scripts/sample-extract.sh *)",
++      "Bash(./datasets/scripts/sample-extract.sh *)",
+       "Bash(aws sts get-caller-identity*)",
+       "Bash(aws ecs describe-services *)",
+       "Bash(aws ecs describe-tasks *)",
+@@ -94,6 +103,12 @@
+       "Bash(scripts/package.sh*)",
+       "Bash(./scripts/package.sh*)",
+       "Bash(bash scripts/package.sh*)",
++      "Bash(bash datasets/scripts/fetch.sh*)",
++      "Bash(datasets/scripts/fetch.sh*)",
++      "Bash(./datasets/scripts/fetch.sh*)",
++      "Bash(bash datasets/scripts/fetch-by-id.sh*)",
++      "Bash(datasets/scripts/fetch-by-id.sh*)",
++      "Bash(./datasets/scripts/fetch-by-id.sh*)",
+       "mcp__aws-api__call_aws",
+       "WebFetch",
+       "WebSearch"
+@@ -233,7 +248,8 @@
+       "Bash(*/sh *cleanup.sh*)",
+       "Bash(*bash.exe *cleanup.sh*)",
+       "Bash(source *cleanup.sh*)",
+-      "Bash(. *cleanup.sh*)"
++      "Bash(. *cleanup.sh*)",
++      "Bash(*fetch.sh *--full*)"
+     ]
+   },
+   "hooks": {
+diff --git a/.claude/agents/dataset-engineer.md b/.claude/agents/dataset-engineer.md
+--- a/.claude/agents/dataset-engineer.md
++++ b/.claude/agents/dataset-engineer.md
+@@ -22,6 +22,12 @@
+ 3. Generate samples with the scripts and record their checksums.
+ 4. Verify: run the dataset validation command and `sbt check` when validation is part of the build. Run `bash -n` on every script.
+ 
++## Running dataset scripts
++
++- Run `datasets/scripts/*.sh` from the repository root as `bash datasets/scripts/<name>.sh ...`. Never `cd` into the directory first, because the guard blocks a directory change combined with running a script. Every script must appear in the docs/agents.md section 7b map. To add a new script, ask factory-engineer for a map entry before you rely on it.
++- `fetch.sh` (`--plan` or `--metadata`) and `fetch-by-id.sh` use the network, so the human is asked each time. `fetch.sh --full` is human-invoked only. Report the dataset, the size estimate, and the destination as MANUAL ACTION REQUIRED instead of trying it.
++- Never point a script's `--out`, `--dest`, or `--root` at a constitutional file, `docs/agent-runs/**`, or `.git/`. The guard blocks it.
++
+ ## Boundaries and escalation
+ 
+ - Parsing and normalization jobs belong to hadoop-engineer. Match policy belongs to entity-resolution-engineer. Domain records belong to domain-engineer. Uploads to S3 and pipeline runs belong to infra-engineer, who writes the scripts, and deploy-engineer, who runs them. Decline and name the owner.
+diff --git a/.claude/agents/dependency-updater.md b/.claude/agents/dependency-updater.md
+--- a/.claude/agents/dependency-updater.md
++++ b/.claude/agents/dependency-updater.md
+@@ -8,7 +8,7 @@
+ 
+ ## Iron laws
+ 
+-1. Edit only version values in the single version ledger. The ledger's path is recorded in docs/agents.md section 4 by amendment after phase 02. Until that amendment exists, you have no write territory: return your proposed bumps as a report.
++1. Edit only version values in the single version ledger, `project/Versions.scala` (docs/agents.md section 3, refinement 4, and section 4). A version value is the contents of an existing string literal. Use the Edit tool with the quotes included in `old_string` and `new_string`, and change nothing outside the literals: no `val` names, entries, comments, or layout. The ownership hook blocks anything else, and it blocks every other path. Never write the ledger or any other file through Bash (`sed -i`, redirects, scripts). That layer is not mechanically fenced, and code-reviewer treats such a write as a defect. For `sbt`, `scalafmt`, and `javaRuntimeImage`, the build also checks a mirror file that build-engineer owns. Return those proposed values as a report for build-engineer instead of editing them.
+ 2. New or removed dependencies, scope changes, plugins, and settings belong to build-engineer. Prepare the analysis and route it.
+ 3. Upgrade in risk order, one library family per change set: patch bumps batched, minor bumps one at a time. Major bumps get a written migration analysis and human approval before any edit.
+ 4. Hadoop and Spark versions must match the EMR release in use. Never bump past what EMR provides.
+@@ -17,7 +17,7 @@
+ 
+ ## Procedure
+ 
+-1. List the current versions from the ledger, `project/plugins.sbt`, and `project/build.properties`.
++1. List the current versions from `project/Versions.scala`. Use `project/plugins.sbt` and `project/build.properties` only to confirm that they read from the ledger.
+ 2. Check the latest stable releases and release notes (WebFetch, GitHub releases). Flag CVEs, behavior changes, and deprecations that touch ScholarChain's usage.
+ 3. Apply one bump family. Verify with `sbt check`. Revert on failure.
+ 
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -5,8 +5,9 @@
+ #   secret reads; destructive or mutating AWS CLI calls (S3, DynamoDB, Neptune, S3 Vectors, ECR,
+ #   KMS, EMR, ECS, and every other service); destructive database statements; non-Terraform IaC;
+ #   Bash writes to constitutional files by anyone except factory-engineer; forged test markers;
+-#   writes to human evidence; operational scripts run by the wrong agent or environment; and any
+-#   non-evidence command from a read-only agent.
++#   writes to human evidence; operational scripts run by the wrong agent or environment; dataset
++#   scripts outside the section 7b map; and any non-evidence command from a read-only agent.
++#   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts (section 12).
+ # The message names the legitimate path so a block becomes routing, not a retry loop.
+ # Fails closed: without Python or with unparseable input every command is blocked.
+ # Owner: factory-engineer (constitutional artifact). Keep ROSTER and the maps in sync with docs/agents.md.
+@@ -37,6 +38,18 @@
+ }
+ # scripts whose first positional argument must be an approved environment
+ ENV_SCRIPTS=" plan deploy rollback smoke-test run-bounded-pipeline "
++# Phase-03 amendment A (docs/agents.md section 7b): datasets/scripts/<name>.sh -> agents allowed to
++# execute it ("*" = any caller). Extra rules in dataset_script_check: record-sample-checksums
++# without --check (write mode) is dataset-engineer only; fetch --full is blocked for every caller.
++dataset_script_runners() {
++  case "$1" in
++    validate-datasets)       echo "*" ;;
++    record-sample-checksums) echo "*" ;;
++    sample-extract)          echo "dataset-engineer" ;;
++    fetch|fetch-by-id)       echo "dataset-engineer" ;;
++    *)                       echo "unknown" ;;
++  esac
++}
+ # ---------------------------------------------------------------------------------------------
+ 
+ SC_INPUT="$(cat)"
+@@ -903,20 +916,63 @@
+   if (( ncd != nok )); then DIRCHANGE=1; fi
+ fi
+ 
+-script_check() {   # <executed path word> <next word (environment)>
+-  local p="$1" envarg="$2" cls rel script runners
++# dataset_script_check <lower-case path below datasets/scripts/> <script arguments...>: the section 7b
++# map. Called only when the executed path RESOLVES (cwd-relative, case-insensitive) into the
++# repository's datasets/scripts/ directory, so a persistent cwd or a relative path cannot bypass it.
++dataset_script_check() {
++  local orig="$1" name="$1" runners a; shift
++  if [[ "$name" =~ ^([a-z0-9_-]+)\.sh$ ]]; then name="${BASH_REMATCH[1]}"; else name="?$name"; fi
++  runners="$(dataset_script_runners "$name")"
++  if [ "$runners" = "unknown" ]; then
++    sc_block "datasets/scripts/$orig is not in the dataset script map (docs/agents.md section 7b). lib.sh is sourced by the other scripts, never run directly. Ask factory-engineer to propose an entry; until it is ratified, nobody runs it through Claude."
++  fi
++  if [ "$runners" != "*" ] && ! in_list "$caller" "$runners"; then
++    sc_block "$caller may not run datasets/scripts/$name.sh. Allowed: $runners (docs/agents.md section 7b). Route the request through the orchestrator to dataset-engineer."
++  fi
++  # Fail closed: a dataset script must not be pointed at a protected path (constitutional files,
++  # human evidence, the test marker, git configuration) through --out, --dest, --root, or similar.
++  if has "$SEG" "($PATH_ALT_CONST|$PATH_ALT_LOCAL|$PATH_ALT_MARKER|$PATH_ALT_EVIDENCE|$PATH_ALT_HUMAN_GATE|$PATH_ALT_GITCFG|\.git/)"; then
++    sc_block "datasets/scripts/$name.sh is named together with a protected path (constitutional files, docs/agent-runs, human-gate.md, .claude/.last-test-run, or .git). Dataset scripts write only under datasets/ or a scratch or data directory."
++  fi
++  case "$name" in
++    fetch)
++      for a in "$@"; do
++        case "$a" in --full|--full=*) sc_block "datasets/scripts/fetch.sh --full (bulk corpus download) is human-invoked only until a ratified amendment and a phase human gate approve a size bound (docs/agents.md section 7b). Report the request, the size estimate, and the destination as MANUAL ACTION REQUIRED." ;; esac
++      done
++      if has "$SEG" "(^|[[:space:]\"'])--full([=[:space:]\"']|$)"; then
++        sc_block "datasets/scripts/fetch.sh with --full anywhere in the command is human-invoked only (docs/agents.md section 7b). Report the request as MANUAL ACTION REQUIRED."
++      fi ;;
++    record-sample-checksums)
++      if [ "$caller" != "dataset-engineer" ]; then
++        for a in "$@"; do [ "$a" = "--check" ] && return 0; done
++        sc_block "$caller may run datasets/scripts/record-sample-checksums.sh only with --check (verify). Writing datasets/samples/SHA256SUMS is dataset-engineer's (docs/agents.md section 7b)."
++      fi ;;
++  esac
++  return 0
++}
++
++script_check() {   # <executed path word> <script arguments...> (the first argument is the environment)
++  local p="$1" envarg="${2:-}" cls rel script runners
++  shift
+   if nonliteral "$p"; then
+     sc_block "the executed script or interpreter operand '$p' is not a literal path (variables, globs, ~, redirections). Run operational scripts as 'scripts/<name>.sh <env>' from the repository root."
+   fi
+   if [ "$DIRCHANGE" = 1 ] && { [[ "$p" == *.sh ]] || [[ "$p" == *scripts* ]]; }; then
+-    sc_block "a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('$p') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts/<name>.sh <env>'."
++    sc_block "a directory change (cd, pushd, popd, env -C, --chdir) combined with running a script ('$p') is blocked because the script's identity cannot be verified. Run it from the repository root as 'scripts/<name>.sh <env>' or 'bash datasets/scripts/<name>.sh'."
+   fi
+   cls="$(sc_classify_path "${p//\\//}")" || sc_block "could not normalize the script path '$p' (fail closed)."
+   rel=""
+   [ "${cls%% *}" = "REL" ] && rel="$(printf '%s' "${cls#* }" | tr '[:upper:]' '[:lower:]')"
++  # Phase-03 amendment A: resolution is anchored. A path that resolves into the repository's
++  # datasets/scripts/ uses the section 7b map; one that resolves into the repository-root scripts/
++  # uses the section 7 map below.
++  if [[ "$rel" == datasets/scripts/* ]]; then
++    dataset_script_check "${rel#datasets/scripts/}" "$@"
++    return 0
++  fi
+   if [[ "$rel" != scripts/* ]]; then
+-    # Outside the repository's scripts/ (a copy in /tmp, a nested scripts/ directory): the map still
+-    # applies by name, as before this checkpoint.
++    # Resolves into neither tree (a copy in /tmp, a nested scripts/ directory elsewhere): the
++    # section 7 map still applies by name, fail closed, as before this amendment.
+     pl="$(printf '%s' "${p//\\//}" | tr '[:upper:]' '[:lower:]')"
+     [[ "$pl" =~ (^|/)scripts/([a-z0-9_-]+\.sh)$ ]] || return 0
+     rel="scripts/${BASH_REMATCH[2]}"
+@@ -991,7 +1047,7 @@
+         fi
+         sc_block "'$b' runs the shell '$b2' with arguments supplied at run time (for example 'xargs bash', 'find -exec bash'), so the script cannot be verified against the section 7 map (fail closed). Run 'scripts/<name>.sh <env>' directly, or use 'bash -n' for syntax checks."
+       fi
+-      [[ "$t" == *.sh ]] && script_check "$t" "${W[j+1]:-}"
++      [[ "$t" == *.sh ]] && script_check "$t" "${W[@]:j+1}"
+       j=$((j+1))
+     done
+     return 0
+@@ -1021,11 +1077,11 @@
+       fi
+       return 0
+     fi
+-    script_check "${W[m]}" "${W[m+1]:-}"
++    script_check "${W[m]}" "${W[@]:m+1}"
+     return 0
+   fi
+   if [[ "$t" == *.sh ]]; then
+-    script_check "$t" "${W[i+1]:-}"
++    script_check "$t" "${W[@]:i+1}"
+     return 0
+   fi
+   if [ "$t" != "[" ] && [ "$t" != "[[" ] && nonliteral "$t"; then
+@@ -1169,4 +1225,12 @@
+   done <<< "$segments_raw"
+ fi
+ 
++# ---- 12. Network dataset scripts always ask (phase-03 amendment A, docs/agents.md section 7b) ----
++# Reached only when nothing above blocked. settings.json ask rules cover the repository-relative
++# forms; this covers every other form (absolute paths, cwd-relative names, wrappers). Only
++# dataset-engineer can get here while running them; for any other caller section 10 has blocked.
++if [ "$caller" = "dataset-engineer" ] && has "$cmd" "(^|[/[:space:]\"'\\\\])fetch(-by-id)?\.sh([^a-z0-9_.-]|$)"; then
++  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"guard-dangerous: datasets/scripts/fetch.sh and fetch-by-id.sh use the network, so the human approves each run (docs/agents.md section 7b)."}}'
++fi
++
+ exit 0
+diff --git a/.claude/hooks/guard-ownership.sh b/.claude/hooks/guard-ownership.sh
+--- a/.claude/hooks/guard-ownership.sh
++++ b/.claude/hooks/guard-ownership.sh
+@@ -13,6 +13,12 @@
+ # shellcheck source=common.sh
+ . "$HERE/common.sh"
+ SC_HOOK="guard-ownership"
++# Phase-03 amendment B (docs/agents.md section 3 refinement 4 and section 4): the dependency ledger.
++# Its path owner stays build-engineer (structure, new entries, names, comments, scopes). LEDGER_EDITOR
++# may change only the contents of existing string literals in LEDGER_PATH, with the Edit tool, to
++# exact version strings (ledger_value_edit below). Lower case, repository-relative.
++LEDGER_PATH="project/versions.scala"
++LEDGER_EDITOR="dependency-updater"
+ 
+ SC_INPUT="$(cat)"
+ export SC_INPUT
+@@ -93,6 +99,48 @@
+ 
+ [ "$caller" = "$owner" ] && exit 0
+ 
++# Ledger value edits (amendment B). The test is mechanical: replace every one-line double-quoted
++# literal in old_string and new_string with "" and require the two skeletons to be byte-identical
++# (so no val, name, comment, operator, or entry is added, removed, or changed); then every changed
++# literal must hold a digit before and after and match an exact-version pattern (no ranges, '+',
++# whitespace, 'latest', or SNAPSHOT). Odd quote counts and backslashes fail closed. Write, MultiEdit,
++# and NotebookEdit are refused. Bash writes to the ledger are NOT checked here (section 4 limits).
++ledger_value_edit() {
++  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
++import json, os, re
++ti = (json.loads(os.environ.get("SC_INPUT") or "{}").get("tool_input") or {})
++old, new = ti.get("old_string"), ti.get("new_string")
++def fail(m):
++    print(m); raise SystemExit(0)
++if not isinstance(old, str) or not isinstance(new, str) or old == "":
++    fail("the edit has no old_string/new_string pair")
++LIT = re.compile(r"\"([^\"\\\n]*)\"")
++def skel(s):
++    if "\\" in s or s.count("\"") % 2:
++        fail("a backslash or an unbalanced double quote cannot be checked (fail closed)")
++    return LIT.sub("\"\"", s), LIT.findall(s)
++(so, lo), (sn, ln) = skel(old), skel(new)
++if so != sn:
++    fail("text outside the string literals changed (val names, entries, comments, and structure belong to build-engineer)")
++changed = [(a, b) for a, b in zip(lo, ln) if a != b]
++if not changed:
++    fail("no version value changed")
++VER = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._:@/-]*$")
++for a, b in changed:
++    if not (re.search(r"[0-9]", a) and re.search(r"[0-9]", b)):
++        fail("literal \"%s\" -> \"%s\" is not a version value" % (a, b))
++    if not VER.match(b) or re.search(r"latest|snapshot", b, re.I):
++        fail("\"%s\" is not an exact pinned version (no ranges, +, whitespace, latest, or SNAPSHOT)" % b)
++'
++}
++if [ "$caller" = "$LEDGER_EDITOR" ] && [ "$rel" = "$LEDGER_PATH" ]; then
++  tn="$(sc_field tool_name)"
++  [ "$tn" = "Edit" ] || sc_block "$caller may change $path only with the Edit tool (got $tn). Whole-file writes and multi-edits of the dependency ledger belong to build-engineer."
++  why="$(ledger_value_edit)" || sc_block "the ledger value check could not run (fail closed)."
++  [ -z "$why" ] && exit 0
++  sc_block "$caller may change only version values in $path: $why. Route structural changes to build-engineer (BLOCKED-ON OWNER: build-engineer)."
++fi
++
+ # build-engineer's .gitkeep exception (finding 9): an EMPTY Write only, and never inside .claude/**,
+ # docs/agent-runs/**, or a path whose first-match owner is factory-engineer, human, or generated.
+ if [ "$caller" = "build-engineer" ]; then
+diff --git a/.claude/hooks/validate-agent-files.sh b/.claude/hooks/validate-agent-files.sh
+--- a/.claude/hooks/validate-agent-files.sh
++++ b/.claude/hooks/validate-agent-files.sh
+@@ -43,7 +43,7 @@
+ py() { PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" "$@"; }
+ 
+ REQUIRED_COMMANDS="deploy rollback incident run-pipeline experiment"
+-EXPECTED_NO_TERRITORY="code-reviewer dependency-updater"
++EXPECTED_NO_TERRITORY="code-reviewer"
+ MCP_READ_TOOLS="mcp__aws-api__call_aws mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation mcp__aws-docs__recommend mcp__terraform__search_providers mcp__terraform__get_provider_details mcp__terraform__get_latest_provider_version mcp__terraform__get_provider_capabilities mcp__terraform__search_modules mcp__terraform__get_module_details mcp__terraform__get_latest_module_version mcp__github__actions_list mcp__github__actions_get mcp__github__get_job_logs mcp__github__list_releases mcp__github__get_latest_release mcp__github__get_file_contents mcp__github__list_commits mcp__github__get_commit mcp__github__pull_request_read mcp__github__list_pull_requests mcp__github__issue_read mcp__github__list_issues"
+ READ_ONLY_TOOLS="Read Grep Glob Bash"
+ in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
+@@ -124,11 +124,31 @@
+ for o in $owners; do
+   in_list "$o" "$roster human generated none" || fail "ownership: guard-ownership.sh names unknown owner '$o'"
+ done
++# Phase-03 amendment B: the ledger value grant (LEDGER_PATH / LEDGER_EDITOR) counts as territory,
++# and must be recorded in the docs/agents.md section 4 ledger row.
++ledger_editor="$(sed -n 's/^LEDGER_EDITOR="\(.*\)"$/\1/p' .claude/hooks/guard-ownership.sh 2>/dev/null)"
++ledger_path="$(sed -n 's/^LEDGER_PATH="\(.*\)"$/\1/p' .claude/hooks/guard-ownership.sh 2>/dev/null)"
++if [ -n "$ledger_editor" ]; then
++  in_list "$ledger_editor" "$roster" || fail "ownership: LEDGER_EDITOR '$ledger_editor' is not a roster agent"
++  if tr -d '\r' < docs/agents.md | grep -i -- "^| \`$ledger_path\`" | grep -q -- "\`$ledger_editor\`"; then
++    pass "ownership: ledger grant $ledger_path -> $ledger_editor is recorded in docs/agents.md section 4"
++  else
++    fail "ownership: ledger grant $ledger_path -> $ledger_editor has no matching row in docs/agents.md section 4"
++  fi
++fi
+ for a in $roster; do
+-  if ! in_list "$a" "$owners" && ! in_list "$a" "$EXPECTED_NO_TERRITORY"; then
++  if ! in_list "$a" "$owners $ledger_editor" && ! in_list "$a" "$EXPECTED_NO_TERRITORY"; then
+     fail "ownership: roster agent '$a' owns no path in guard-ownership.sh"
+   fi
+ done
++# Script maps (docs/agents.md sections 7 and 7b) may name only roster agents.
++set -f   # the "*" (any caller) entries must not glob
++for fn in script_runners dataset_script_runners; do
++  for a in $(sed -n "/^$fn()/,/^}/p" .claude/hooks/guard-dangerous.sh 2>/dev/null | sed -n 's/.*echo "\([^"]*\)" ;;.*/\1/p'); do
++    [ "$a" = "*" ] || [ "$a" = "unknown" ] || in_list "$a" "$roster" || fail "orphan: $fn in guard-dangerous.sh names unknown agent '$a'"
++  done
++done
++set +f
+ [ "$fails" -eq "$fails_before_orphans" ] && pass "orphans: roster, agent files, guard ROSTER, and ownership owners agree"
+ 
+ # ---- 5. Hooks: syntax and executable bits -------------------------------------------------------

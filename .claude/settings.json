@@ -36,6 +36,12 @@
       "Bash(scripts/smoke-test.sh *)",
       "Bash(./scripts/smoke-test.sh *)",
       "Bash(bash scripts/smoke-test.sh *)",
+      "Bash(bash datasets/scripts/validate-datasets.sh*)",
+      "Bash(datasets/scripts/validate-datasets.sh*)",
+      "Bash(./datasets/scripts/validate-datasets.sh*)",
+      "Bash(bash datasets/scripts/record-sample-checksums.sh*)",
+      "Bash(datasets/scripts/record-sample-checksums.sh*)",
+      "Bash(./datasets/scripts/record-sample-checksums.sh*)",
       "Bash(aws sts get-caller-identity*)",
       "Bash(aws ecs describe-services *)",
       "Bash(aws ecs describe-tasks *)",
@@ -94,6 +100,12 @@
       "Bash(scripts/package.sh*)",
       "Bash(./scripts/package.sh*)",
       "Bash(bash scripts/package.sh*)",
+      "Bash(bash datasets/scripts/fetch.sh*)",
+      "Bash(datasets/scripts/fetch.sh*)",
+      "Bash(./datasets/scripts/fetch.sh*)",
+      "Bash(bash datasets/scripts/fetch-by-id.sh*)",
+      "Bash(datasets/scripts/fetch-by-id.sh*)",
+      "Bash(./datasets/scripts/fetch-by-id.sh*)",
       "mcp__aws-api__call_aws",
       "WebFetch",
       "WebSearch"
@@ -233,7 +245,8 @@
       "Bash(*/sh *cleanup.sh*)",
       "Bash(*bash.exe *cleanup.sh*)",
       "Bash(source *cleanup.sh*)",
-      "Bash(. *cleanup.sh*)"
+      "Bash(. *cleanup.sh*)",
+      "Bash(*fetch.sh *--full*)"
     ]
   },
   "hooks": {

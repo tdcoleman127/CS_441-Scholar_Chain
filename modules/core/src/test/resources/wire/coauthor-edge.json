@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "edgeId": "coedge:v1:4bfb121e18887a2417239d000ce0f94096c78b12b130841f5b9176557f215a16",
+  "researcherLow": "researcher:orcid:0000-0002-1825-0097",
+  "researcherHigh": "researcher:sc1:2288d5bc36f4eebcf91c1e7399f902b26ee76295b5936b58f6203e1321341600",
+  "window": {
+    "startYear": 2020,
+    "endYear": 2024
+  },
+  "policyVersion": "graph-policy-v1",
+  "coauthoredWorkCount": 2,
+  "firstYear": 2022,
+  "lastYear": 2024,
+  "supportingWorkIds": [
+    "work:dblp:conf/kdd/CarberrySmith24",
+    "work:doi:10.5555/sample.0002"
+  ],
+  "confidence": 0.95,
+  "provenance": {
+    "sourceDataset": "scholarchain-pipeline",
+    "sourceRecordId": "coauthor-aggregation",
+    "pipelineRunId": "run:v1:40bb9cfda64123cbe54be17ae30f7340ee0958ff3d7c1a4056926fbb08069875"
+  }
+}
