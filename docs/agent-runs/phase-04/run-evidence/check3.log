@@ -1,0 +1,68 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] scalafmt: Checking 1 Scala sources (C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain)...
+[info] scalafmt: Checking 3 Scala sources (C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain)...
+[success] Total time: 6 s, completed Oct 27, 2026, 4:40:36 PM
+[success] Total time: 0 s, completed Oct 27, 2026, 4:40:37 PM
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\target\scala-3.3.8\classes ...
+[info] done compiling
+[success] Total time: 12 s, completed Oct 27, 2026, 4:40:49 PM
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\target\scala-3.3.8\test-classes ...
+[info] done compiling
+[success] Total time: 2 s, completed Oct 27, 2026, 4:40:51 PM
+Test run [36medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m: finished [90m0.161s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m finished: 0 failed, 0 ignored, 6 total [90m0.233s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m started
+[32medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m: finished [90m0.078s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m finished: 0 failed, 0 ignored, 13 total [90m0.078s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m: finished [90m0.559s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m finished: 0 failed, 0 ignored, 3 total [90m0.609s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m: finished [90m0.561s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m finished: 0 failed, 0 ignored, 4 total [90m0.611s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m: finished [90m0.629s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m finished: 0 failed, 0 ignored, 6 total [90m0.674s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m: finished [90m0.694s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m finished: 0 failed, 0 ignored, 22 total [90m0.744s[0m
+Test run [36medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m started
+[32medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m: finished [90m0.74s[0m
+Test run [36medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m finished: 0 failed, 0 ignored, 19 total [90m0.79s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m: finished [90m0.095s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m finished: 0 failed, 0 ignored, 3 total [90m0.099s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m: finished [90m0.029s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m finished: 0 failed, 0 ignored, 4 total [90m0.029s[0m
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Test run [36medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m started
+[32medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m: finished [90m0.853s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m finished: 0 failed, 0 ignored, 10 total [90m0.897s[0m
+Test run [36medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m started
+[32medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m: finished [90m0.972s[0m
+Test run [36medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m finished: 0 failed, 0 ignored, 33 total [90m1.022s[0m
+Test run [36medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m started
+[32medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m: finished [90m0.203s[0m
+Test run [36medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m finished: 0 failed, 0 ignored, 33 total [90m0.203s[0m
+[info] Passed: Total 143, Failed 0, Errors 0, Passed 143
+Test run [36medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m: finished [90m0.824s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m finished: 0 failed, 0 ignored, 5 total [90m0.824s[0m
+IT counters job1=HashMap(OVERSIZE_TEAM -> 0, DUPLICATE -> 0, UNSUPPORTED_TYPE -> 3, REJECTED -> 6, CONFLICT -> 0, ACCEPTED -> 7, AUTHOR_PAPERS -> 0, INPUT -> 13, TEAMS -> 0, MISSING_KEY -> 1, EMITTED_PAIR -> 0, SCHEMA_FAILURE -> 2) job6=HashMap(OVERSIZE_TEAM -> 4, DUPLICATE -> 0, UNSUPPORTED_TYPE -> 0, REJECTED -> 0, CONFLICT -> 0, ACCEPTED -> 7, AUTHOR_PAPERS -> 35, INPUT -> 7, TEAMS -> 7, MISSING_KEY -> 0, EMITTED_PAIR -> 285, SCHEMA_FAILURE -> 0) out1=C:\Users\figge\AppData\Local\Temp\sc-hadoop-it6495323399600552005\run=run-v1-91b48e4ac955c0530c50bbe8c4377c8253ff0ac5445bf46810c56de03a900375\snapshot=sample\dblp-extract out2=C:\Users\figge\AppData\Local\Temp\sc-hadoop-it6495323399600552005\run=run-v1-91b48e4ac955c0530c50bbe8c4377c8253ff0ac5445bf46810c56de03a900375\snapshot=sample\team-extract
+IT framework job1=TreeMap(Shuffle Errors:BAD_ID -> 0, Shuffle Errors:CONNECTION -> 0, Shuffle Errors:IO_ERROR -> 0, Shuffle Errors:WRONG_LENGTH -> 0, Shuffle Errors:WRONG_MAP -> 0, Shuffle Errors:WRONG_REDUCE -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_BYTES_READ -> 329579, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_BYTES_WRITTEN -> 1991513, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_LARGE_READ_OPS -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_READ_OPS -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_WRITE_OPS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMBINE_INPUT_RECORDS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMBINE_OUTPUT_RECORDS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMMITTED_HEAP_BYTES -> 838860800, org.apache.hadoop.mapreduce.TaskCounter:FAILED_SHUFFLE -> 0, org.apache.hadoop.mapreduce.TaskCounter:GC_TIME_MILLIS -> 6, org.apache.hadoop.mapreduce.TaskCounter:MAP_INPUT_RECORDS -> 13, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_BYTES -> 19373, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_MATERIALIZED_BYTES -> 3730, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:MERGED_MAP_OUTPUTS -> 4, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_INPUT_GROUPS -> 7, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_INPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_OUTPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_SHUFFLE_BYTES -> 3730, org.apache.hadoop.mapreduce.TaskCounter:SHUFFLED_MAPS -> 4, org.apache.hadoop.mapreduce.TaskCounter:SPILLED_RECORDS -> 14, org.apache.hadoop.mapreduce.TaskCounter:SPLIT_RAW_BYTES -> 361, org.apache.hadoop.mapreduce.lib.input.FileInputFormatCounter:BYTES_READ -> 5498, org.apache.hadoop.mapreduce.lib.output.FileOutputFormatCounter:BYTES_WRITTEN -> 19277) job6=TreeMap(Shuffle Errors:BAD_ID -> 0, Shuffle Errors:CONNECTION -> 0, Shuffle Errors:IO_ERROR -> 0, Shuffle Errors:WRONG_LENGTH -> 0, Shuffle Errors:WRONG_MAP -> 0, Shuffle Errors:WRONG_REDUCE -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_BYTES_READ -> 453798, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_BYTES_WRITTEN -> 4324916, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_LARGE_READ_OPS -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_READ_OPS -> 0, org.apache.hadoop.mapreduce.FileSystemCounter:FILE_WRITE_OPS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMBINE_INPUT_RECORDS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMBINE_OUTPUT_RECORDS -> 0, org.apache.hadoop.mapreduce.TaskCounter:COMMITTED_HEAP_BYTES -> 838860800, org.apache.hadoop.mapreduce.TaskCounter:FAILED_SHUFFLE -> 0, org.apache.hadoop.mapreduce.TaskCounter:GC_TIME_MILLIS -> 3, org.apache.hadoop.mapreduce.TaskCounter:MAP_INPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_BYTES -> 19373, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_MATERIALIZED_BYTES -> 3444, org.apache.hadoop.mapreduce.TaskCounter:MAP_OUTPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:MERGED_MAP_OUTPUTS -> 4, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_INPUT_GROUPS -> 7, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_INPUT_RECORDS -> 7, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_OUTPUT_RECORDS -> 0, org.apache.hadoop.mapreduce.TaskCounter:REDUCE_SHUFFLE_BYTES -> 3444, org.apache.hadoop.mapreduce.TaskCounter:SHUFFLED_MAPS -> 4, org.apache.hadoop.mapreduce.TaskCounter:SPILLED_RECORDS -> 14, org.apache.hadoop.mapreduce.TaskCounter:SPLIT_RAW_BYTES -> 510, org.apache.hadoop.mapreduce.lib.input.FileInputFormatCounter:BYTES_READ -> 19285, org.apache.hadoop.mapreduce.lib.output.FileOutputFormatCounter:BYTES_WRITTEN -> 0)
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m: finished [90m6.456s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m finished: 0 failed, 0 ignored, 1 total [90m6.456s[0m
+[info] Passed: Total 19, Failed 0, Errors 0, Passed 19
+[info] markTestRun: updated C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\.claude\.last-test-run
+[success] Total time: 10 s, completed Oct 27, 2026, 4:41:00 PM

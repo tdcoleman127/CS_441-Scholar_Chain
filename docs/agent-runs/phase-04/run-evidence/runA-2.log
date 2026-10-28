@@ -1,0 +1,5 @@
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+JOB dblp-extract ok=true skipped=true output=file:/C:/Users/figge/AppData/Local/Temp/claude/c--Users-figge-OneDrive-Desktop-UIC-Folder-CS-441-CS-441-Scholar-Chain/53e20020-df29-4cbd-86cb-b671fcbe03ef/scratchpad/runA/run=run-v1-605a6a0b610befb08cf557002b7091e46bc13e492c71687a1a65326d1d870887/snapshot=dblp-samples-local/dblp-extract counters=Map()
+JOB team-extract ok=true skipped=true output=file:/C:/Users/figge/AppData/Local/Temp/claude/c--Users-figge-OneDrive-Desktop-UIC-Folder-CS-441-CS-441-Scholar-Chain/53e20020-df29-4cbd-86cb-b671fcbe03ef/scratchpad/runA/run=run-v1-605a6a0b610befb08cf557002b7091e46bc13e492c71687a1a65326d1d870887/snapshot=dblp-samples-local/team-extract counters=Map()

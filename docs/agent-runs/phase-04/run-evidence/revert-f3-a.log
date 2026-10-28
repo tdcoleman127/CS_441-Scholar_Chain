@@ -1,0 +1,122 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\target\scala-3.3.8\classes ...
+[warn] -- [E198] Unused Symbol Warning: C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\src\main\scala\edu\uic\cs441\scholarchain\hadoop\Jobs.scala:115:6 
+[warn] 115 |      inputFile: String,
+[warn]     |      ^^^^^^^^^
+[warn]     |      unused explicit parameter
+[warn] one warning found
+[info] done compiling
+Test run [36medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m started
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m.[91ma blank (empty or whitespace-only) positional argument is rejected (review round 4, F3)[0m [90m0.045s[0m munit.FailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\DriverArgsSuite.scala:57 i=0 b='' Right(Args(,in/dblp.dtd,file:///out,snap,run:v1:91b48e4ac955c0530c50bbe8c4377c8253ff0ac5445bf46810c56de03a900375,2,50))
+56:      val res = DblpPipelineMain.parseArgs(full.updated(i, b))
+[7m57:      assert(res.left.exists(_.contains(s"argument ${i + 1} is blank")), s"i=$i b='$b' $res")[0m
+58:    assert(DblpPipelineMain.parseArgs(good.updated(2, "")).left.exists(_.contains("argument 3")))
+[90m    at [0m[90mmunit.FunSuite.assert[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite.$init$$$anonfun$4$$anonfun$1$$anonfun$1[0m[1m([0m[1mDriverArgsSuite.scala[0m:[1m57[0m[1m)[0m
+[90m    at [0m[90mscala.collection.immutable.List.foreach[0m[90m([0m[90mList.scala[0m:[90m323[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite.$init$$$anonfun$4$$anonfun$1[0m[1m([0m[1mDriverArgsSuite.scala[0m:[1m55[0m[1m)[0m
+[90m    at [0m[90mscala.collection.immutable.Range.foreach[0m[90m([0m[90mRange.scala[0m:[90m256[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite.$init$$$anonfun$4[0m[1m([0m[1mDriverArgsSuite.scala[0m:[1m55[0m[1m)[0m
+[32medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m: finished [90m0.147s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DriverArgsSuite[0m finished: [91m1 failed[0m, 0 ignored, 5 total [90m0.178s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m started
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m.[91minputFile is the base name of the split's file, independent of where it is stored[0m [90m0.028s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\RejectRecordSuite.scala:18
+17:    val local = "file:///C:/tmp/a/datasets/samples/dblp/dblp-sample.xml"
+[7m18:    assertEquals(DblpExtractMapper.inputFileName(split(local)), "dblp-sample.xml")[0m
+19:    assertEquals(
+values are not the same
+[1m=> Obtained[0m
+file:/C:/tmp/a/datasets/samples/dblp/dblp-sample.xml
+[1m=> Diff[0m ([91m- expected[0m, [92m+ obtained[0m)
+[91m-dblp-sample.xml[0m
+[92m+file:/C:/tmp/a/datasets/samples/dblp/dblp-sample.xml[0m
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite.$init$$$anonfun$1[0m[1m([0m[1mRejectRecordSuite.scala[0m:[1m18[0m[1m)[0m
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m.[91mreject records are schema 2, carry inputFile, and are written under rejects/v2[0m [90m0.006s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\RejectRecordSuite.scala:34
+33:    assertEquals(rr.rejectSchemaVersion, 2)
+[7m34:    assertEquals(rr.inputFile, "dblp-sample.xml")[0m
+35:    assertEquals(rr.inputOffset, 3859L)
+Obtained empty output!
+=> Expected:
+dblp-sample.xml
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite.$init$$$anonfun$2[0m[1m([0m[1mRejectRecordSuite.scala[0m:[1m34[0m[1m)[0m
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m.[91mthe six sample rejects get their own file names and per-file offsets[0m [90m0.198s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\RejectRecordSuite.scala:60
+59:      )
+[7m60:    )[0m
+61:  }
+values are not the same
+[1m=> Obtained[0m
+Vector(
+  Tuple3(
+    _1 = "",
+    _2 = 3859,
+    _3 = "missing-key"
+  ),
+  Tuple3(
+    _1 = "",
+    _2 = 4031,
+    _3 = "unsupported-record-type"
+  ),
+  Tuple3(
+    _1 = "",
+    _2 = 4285,
+    _3 = "unsupported-record-type"
+  ),
+  Tuple3(
+    _1 = "",
+    _2 = 4454,
+    _3 = "unsupported-record-type"
+  ),
+  Tuple3(
+    _1 = "",
+    _2 = 643,
+    _3 = "undeclared-entity"
+  ),
+  Tuple3(
+    _1 = "",
+    _2 = 812,
+    _3 = "truncated-record"
+  )
+)
+[1m=> Diff[0m ([91m- expected[0m, [92m+ obtained[0m)
+   Tuple3(
+[91m-    _1 = "dblp-sample.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 3859,
+   Tuple3(
+[91m-    _1 = "dblp-sample.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 4031,
+   Tuple3(
+[91m-    _1 = "dblp-sample.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 4285,
+   Tuple3(
+[91m-    _1 = "dblp-sample.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 4454,
+   Tuple3(
+[91m-    _1 = "dblp-malformed.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 643,
+   Tuple3(
+[91m-    _1 = "dblp-malformed.xml",[0m
+[92m+    _1 = "",[0m
+     _2 = 812,
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite.$init$$$anonfun$3[0m[1m([0m[1mRejectRecordSuite.scala[0m:[1m60[0m[1m)[0m
+[32medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m: finished [90m0.233s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.RejectRecordSuite[0m finished: [91m3 failed[0m, 0 ignored, 3 total [90m0.233s[0m
+[error] Failed: Total 8, Failed 4, Errors 0, Passed 4
+[error] Failed tests:
+[error] 	edu.uic.cs441.scholarchain.hadoop.DriverArgsSuite
+[error] 	edu.uic.cs441.scholarchain.hadoop.RejectRecordSuite
+[error] (hadoop / Test / testOnly) sbt.TestsFailedException: Tests unsuccessful
+[error] Total time: 14 s, completed Oct 27, 2026, 5:07:13 PM

@@ -1,0 +1,60 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] scalafmt: Checking 1 Scala sources (C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain)...
+[info] scalafmt: Checking 3 Scala sources (C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain)...
+[success] Total time: 4 s, completed Oct 27, 2026, 4:27:32 PM
+[success] Total time: 0 s, completed Oct 27, 2026, 4:27:32 PM
+[success] Total time: 1 s, completed Oct 27, 2026, 4:27:33 PM
+[success] Total time: 2 s, completed Oct 27, 2026, 4:27:35 PM
+Test run [36medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m: finished [90m0.089s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.CanonicalHashSuite[0m finished: 0 failed, 0 ignored, 6 total [90m0.128s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m started
+[32medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m: finished [90m0.024s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.EnumWireSuite[0m finished: 0 failed, 0 ignored, 13 total [90m0.026s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m: finished [90m0.268s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.IdFormatSuite[0m finished: 0 failed, 0 ignored, 3 total [90m0.293s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m: finished [90m0.272s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.ResearcherPairSuite[0m finished: 0 failed, 0 ignored, 4 total [90m0.297s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m started
+[32medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m: finished [90m0.332s[0m
+Test run [36medu.uic.cs441.scholarchain.core.ids.StableIdsSuite[0m finished: 0 failed, 0 ignored, 22 total [90m0.357s[0m
+Test run [36medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m started
+[32medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m: finished [90m0.386s[0m
+Test run [36medu.uic.cs441.scholarchain.core.config.ConfigLoaderSuite[0m finished: 0 failed, 0 ignored, 19 total [90m0.411s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m started
+[32medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m: finished [90m0.438s[0m
+Test run [36medu.uic.cs441.scholarchain.core.model.AffiliationPolicySuite[0m finished: 0 failed, 0 ignored, 10 total [90m0.461s[0m
+Test run [36medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m started
+[32medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m: finished [90m0.528s[0m
+Test run [36medu.uic.cs441.scholarchain.core.validation.ValidationSuite[0m finished: 0 failed, 0 ignored, 33 total [90m0.553s[0m
+Test run [36medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m started
+[32medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m: finished [90m0.15s[0m
+Test run [36medu.uic.cs441.scholarchain.core.json.WireContractSuite[0m finished: 0 failed, 0 ignored, 33 total [90m0.15s[0m
+[info] Passed: Total 143, Failed 0, Errors 0, Passed 143
+Test run [36medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m: finished [90m0.569s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.DblpParserSuite[0m finished: 0 failed, 0 ignored, 6 total [90m0.604s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m: finished [90m0.079s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamsSuite[0m finished: 0 failed, 0 ignored, 3 total [90m0.079s[0m
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Test run [36medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m: finished [90m0.74s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.RepairSuite[0m finished: 0 failed, 0 ignored, 5 total [90m0.74s[0m
+IT counters job1=HashMap(OVERSIZE_TEAM -> 0, DUPLICATE -> 0, UNSUPPORTED_TYPE -> 3, REJECTED -> 6, CONFLICT -> 0, ACCEPTED -> 7, AUTHOR_PAPERS -> 0, INPUT -> 13, TEAMS -> 0, MISSING_KEY -> 1, EMITTED_PAIR -> 0, SCHEMA_FAILURE -> 2) job6=HashMap(OVERSIZE_TEAM -> 4, DUPLICATE -> 0, UNSUPPORTED_TYPE -> 0, REJECTED -> 0, CONFLICT -> 0, ACCEPTED -> 7, AUTHOR_PAPERS -> 35, INPUT -> 7, TEAMS -> 7, MISSING_KEY -> 0, EMITTED_PAIR -> 285, SCHEMA_FAILURE -> 0) out1=C:\Users\figge\AppData\Local\Temp\sc-hadoop-it2143662591141795373\run=run-v1-91b48e4ac955c0530c50bbe8c4377c8253ff0ac5445bf46810c56de03a900375\snapshot=sample\dblp-extract out2=C:\Users\figge\AppData\Local\Temp\sc-hadoop-it2143662591141795373\run=run-v1-91b48e4ac955c0530c50bbe8c4377c8253ff0ac5445bf46810c56de03a900375\snapshot=sample\team-extract
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m started
+[32medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m: finished [90m5.066s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m finished: 0 failed, 0 ignored, 1 total [90m5.066s[0m
+[info] Passed: Total 15, Failed 0, Errors 0, Passed 15
+[info] markTestRun: updated C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\.claude\.last-test-run
+[success] Total time: 8 s, completed Oct 27, 2026, 4:27:43 PM

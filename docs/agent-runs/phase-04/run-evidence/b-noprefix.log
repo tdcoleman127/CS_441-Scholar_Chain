@@ -1,0 +1,27 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\target\scala-3.3.8\classes ...
+[info] done compiling
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m started
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m.[91mboth jobs run locally, emit valid outputs, reject bad input, and are idempotent[0m [90m0.052s[0m munit.FailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\LocalPipelineSuite.scala:43 HADOOP_HOME is not set. LocalPipelineSuite runs Hadoop's LocalJobRunner, which on Windows needs HADOOP_HOME set to a Hadoop install whose bin directory contains winutils.exe and hadoop.dll (and that bin on PATH). This integration test fails instead of skipping (phase 04 human decision).
+42:      sys.env.get("HADOOP_HOME")
+[7m43:    ).foreach(msg => fail(msg))[0m
+44:    val base  = Files.createTempDirectory("sc-hadoop-it")
+[90m    at [0m[90mmunit.Assertions.fail[0m[90m([0m[90mAssertions.scala[0m:[90m297[0m[90m)[0m
+[90m    at [0m[90mmunit.Assertions.fail$[0m[90m([0m[90mAssertions.scala[0m:[90m20[0m[90m)[0m
+[90m    at [0m[90mmunit.FunSuite.fail[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite.$init$$$anonfun$1$$anonfun$1[0m[1m([0m[1mLocalPipelineSuite.scala[0m:[1m43[0m[1m)[0m
+[90m    at [0m[90mscala.Option.foreach[0m[90m([0m[90mOption.scala[0m:[90m437[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite.$init$$$anonfun$1[0m[1m([0m[1mLocalPipelineSuite.scala[0m:[1m43[0m[1m)[0m
+[32medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m: finished [90m0.093s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m finished: [91m1 failed[0m, 0 ignored, 2 total [90m0.115s[0m
+[error] Failed: Total 2, Failed 1, Errors 0, Passed 1
+[error] Failed tests:
+[error] 	edu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite
+[error] (hadoop / Test / testOnly) sbt.TestsFailedException: Tests unsuccessful
+[error] Total time: 9 s, completed Oct 27, 2026, 5:08:26 PM

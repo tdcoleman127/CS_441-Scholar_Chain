@@ -1,0 +1,66 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\hadoop\target\scala-3.3.8\classes ...
+[info] done compiling
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m started
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m.[91mreducing the sample works emits 285 pairs, 35 author-papers, 7 teams, 4 oversize at 2[0m [90m0.807s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\TeamReducerSuite.scala:42
+41:    assertEquals(rec.counters(ScCounter.AUTHOR_PAPERS), 35L)
+[7m42:    assertEquals(rec.counters(ScCounter.EMITTED_PAIR), 285L)[0m
+43:    assertEquals(rec.outputs("teams").size, 7)
+values are not the same
+[1m=> Obtained[0m
+0
+[1m=> Diff[0m ([91m- expected[0m, [92m+ obtained[0m)
+[91m-285[0m
+[92m+0[0m
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite.$init$$$anonfun$1[0m[1m([0m[1mTeamReducerSuite.scala[0m:[1m42[0m[1m)[0m
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m.[91mdefault threshold: no oversize team on the samples, pairs unchanged[0m [90m0.02s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\TeamReducerSuite.scala:70
+69:    assertEquals(rec.counters(ScCounter.OVERSIZE_TEAM), 0L)
+[7m70:    assertEquals(rec.counters(ScCounter.EMITTED_PAIR), 285L)[0m
+71:  }
+values are not the same
+[1m=> Obtained[0m
+0
+[1m=> Diff[0m ([91m- expected[0m, [92m+ obtained[0m)
+[91m-285[0m
+[92m+0[0m
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite.$init$$$anonfun$2[0m[1m([0m[1mTeamReducerSuite.scala[0m:[1m70[0m[1m)[0m
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m.[91mduplicate envelopes for one work count DUPLICATE and do not double the pairs[0m [90m0.004s[0m munit.FailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\TeamReducerSuite.scala:80 assertion failed
+79:    assertEquals(twice.outputs("pairs"), once.outputs("pairs"))
+[7m80:    assert(once.outputs("pairs").nonEmpty)[0m
+81:  }
+[90m    at [0m[90mmunit.FunSuite.assert[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite.$init$$$anonfun$3[0m[1m([0m[1mTeamReducerSuite.scala[0m:[1m80[0m[1m)[0m
+[32medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m: finished [90m0.899s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.TeamReducerSuite[0m finished: [91m3 failed[0m, 0 ignored, 3 total [90m0.937s[0m
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m started
+[91m==> X [0m[91medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m.[91mboth jobs run locally, emit valid outputs, reject bad input, and are idempotent[0m [90m5.059s[0m munit.ComparisonFailException: modules\hadoop\src\test\scala\edu\uic\cs441\scholarchain\hadoop\LocalPipelineSuite.scala:65
+64:      assertEquals(c2("OVERSIZE_TEAM"), 4L)
+[7m65:      assertEquals(c2("EMITTED_PAIR"), 285L) // 3 + 3 + 3 + 24 * 23 / 2[0m
+66:      // Framework counters agree with the ScholarChain counters (Job 1: 13 records in, 7 works
+values are not the same
+[1m=> Obtained[0m
+0
+[1m=> Diff[0m ([91m- expected[0m, [92m+ obtained[0m)
+[91m-285[0m
+[92m+0[0m
+[90m    at [0m[90mmunit.FunSuite.assertEquals[0m[90m([0m[90mFunSuite.scala[0m:[90m12[0m[90m)[0m
+[1m    at [0m[1medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite.$init$$$anonfun$1[0m[1m([0m[1mLocalPipelineSuite.scala[0m:[1m65[0m[1m)[0m
+[32medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m: finished [90m5.06s[0m
+Test run [36medu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite[0m finished: [91m1 failed[0m, 0 ignored, 2 total [90m5.067s[0m
+[error] Failed: Total 5, Failed 4, Errors 0, Passed 1
+[error] Failed tests:
+[error] 	edu.uic.cs441.scholarchain.hadoop.LocalPipelineSuite
+[error] 	edu.uic.cs441.scholarchain.hadoop.TeamReducerSuite
+[error] (hadoop / Test / testOnly) sbt.TestsFailedException: Tests unsuccessful
+[error] Total time: 21 s, completed Oct 27, 2026, 5:05:46 PM
