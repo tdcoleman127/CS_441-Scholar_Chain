@@ -1,8 +1,32 @@
 # Phase 04: where to resume
 
-Written by the orchestrator. Updated at the end of the 2026-10-27 session. Read this first in the next session.
+Written by the orchestrator. Updated at the end of the 2026-10-29 session. Read this first in the next session.
 
-## Where things stand
+## Part B status (2026-10-29 session)
+
+- Part A is committed (8364c79; commit hash recorded in 52ac59b).
+- Work order: `part-b-work-order.md`. hadoop-engineer built jobs 2, 3, 4+5, and 7: `hadoop-engineer-partb-report.md`.
+- `sbt check` exit 0 (`run-evidence/partb-check1.log`): core 143/143, hadoop 44/44; SourcePipelineSuite really executed.
+- **code-reviewer part B round 1: REQUEST_CHANGES** (`code-reviewer-report-partb-round1.md`):
+  - F1 MAJOR: Job 7 buffers and sorts whole pair groups in memory (OOM on giant teams).
+  - F2 MAJOR: topics and institutions not exported; topic ID-to-label linkage lost.
+  - F3 to F5 MINOR: Crossref MISSING_KEY miscount; no failing test for Job 2 DUPLICATE/CONFLICT; blockstats lack provenance.
+- Same session, later: the human accepted the 11 hadoop-local record types and asked for the blocking review and a quick repair (`human-decisions-2026-10-29.md`).
+  - hadoop-engineer repair 1 fixed F1 to F5 (`hadoop-engineer-partb-repair1-report.md`). `sbt check` exit 0 at 11:49:28 PM: core 143/143, hadoop 50/50 (`run-evidence/partb-repair1-check.log`).
+  - **code-reviewer part B round 2: APPROVE**, with 2 non-blocking MINOR findings (`code-reviewer-report-partb-round2.md`): no test covers Job 7's partitioner wiring; the repair report overstated one test (annotated).
+  - The entity-resolution review (`entity-resolution-engineer-review-partb.md`) has 3 HIGH recall findings (chunking splits blocks by source, a suffix becomes the surname, name order) plus E-F11: ownership of the blocking keys and features is ambiguous, so it needs a factory-engineer amendment and human ratification. Open human decisions: E-F11 option a or b; whether to fix E-F1 to E-F3 and E-F6 before the part B gate or record them as known risks.
+- Nothing from part B is committed. Untracked or modified: `Jobs.scala` and 6 new files under `modules/hadoop`, plus the part B files in this folder and `run-evidence/partb-*.log` (gitignored; use `git add -f`).
+
+### Next steps for part B, in order
+
+1. hadoop-engineer repair 1: F1 and F2 (F3 to F5 recommended), with feature tests and `sbt check`.
+2. code-reviewer part B round 2.
+3. Human decisions:
+   - Accept or reject the 11 hadoop-local record types (report RISKS 1). If they are promoted to core, domain-engineer does it.
+   - Whether entity-resolution-engineer reviews the block keys, the feature list, and chunking (680 of 861 pairs skipped in the largest sample block).
+4. test-engineer adversarial tests (parts A and B), then the human gate for part B, then the commit.
+
+## Part A status (2026-10-27 session; accepted since)
 
 - **Phase 04 part A (Job 1 DBLP extraction, Job 6 teams and pairs): ready for the human gate.**
   - Both jobs have executed locally on native Windows (HADOOP_HOME=C:\hadoop). Counters INPUT 13, ACCEPTED 7, REJECTED 6, EMITTED_PAIR 285; max team 24 (SampleP25); largest expansion 276. Runs are byte-deterministic.

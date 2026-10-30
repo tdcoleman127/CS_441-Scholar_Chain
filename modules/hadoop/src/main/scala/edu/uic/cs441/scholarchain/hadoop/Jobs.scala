@@ -21,7 +21,10 @@ import upickle.default.{read, write}
 /** Counter group `ScholarChain` (names are stable; reports grep them). */
 enum ScCounter extends java.lang.Enum[ScCounter]:
   case INPUT, ACCEPTED, REJECTED, DUPLICATE, CONFLICT, MISSING_KEY, SCHEMA_FAILURE,
-    UNSUPPORTED_TYPE, OVERSIZE_TEAM, EMITTED_PAIR, TEAMS, AUTHOR_PAPERS
+    UNSUPPORTED_TYPE, OVERSIZE_TEAM, EMITTED_PAIR, TEAMS, AUTHOR_PAPERS,
+    // Part B (Jobs 2, 3, 4+5, 7). Appended so part A names and order are unchanged.
+    HEADER_SKIPPED, CITATIONS, EXACT_ID_KEY, LINKED_KEY, BLOCKS, OVERSIZE_BLOCK, CANDIDATES,
+    EXPORTED
 
 object Conf:
   val RunId             = "scholarchain.run.id"
@@ -266,7 +269,7 @@ object Pipeline:
     validateSnapshot(snapshot)
     new Path(s"$base/run=${runSegment(runId)}/snapshot=$snapshot/$job")
 
-  private def common(conf: Configuration, name: String, reducers: Int): Job =
+  private[hadoop] def common(conf: Configuration, name: String, reducers: Int): Job =
     val job = Job.getInstance(conf, name)
     job.setJarByClass(classOf[WorkIdPartitioner])
     job.getConfiguration.setBoolean("mapreduce.map.output.compress", true)
@@ -296,11 +299,12 @@ object Pipeline:
         scala.collection.immutable.SortedMap.empty
   )
 
-  private def counters(job: Job): Map[String, Long] =
+  private[hadoop] def counters(job: Job): Map[String, Long] =
     val cs = job.getCounters
     ScCounter.values.map(c => c.toString -> cs.findCounter(c).getValue).toMap
 
-  private def frameworkCounters(job: Job): scala.collection.immutable.SortedMap[String, Long] =
+  private[hadoop] def frameworkCounters(job: Job)
+      : scala.collection.immutable.SortedMap[String, Long] =
     val own = classOf[ScCounter].getName
     val all =
       for
@@ -314,7 +318,7 @@ object Pipeline:
    * snapshot, so it is reused, not recomputed. A directory without `_SUCCESS` is a failed attempt;
    * overwriting it needs a human decision (docs/agents.md section 8), so the job fails instead.
    */
-  private def guard(conf: Configuration, out: Path): Option[Boolean] =
+  private[hadoop] def guard(conf: Configuration, out: Path): Option[Boolean] =
     val fs = out.getFileSystem(conf)
     if fs.exists(new Path(out, "_SUCCESS")) then Some(true)
     else if fs.exists(out) then
