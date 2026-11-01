@@ -1,9 +1,9 @@
 -------------------------------------
 Phase 4: implement raw ingestion and Hadoop MapReduce
 
-[Round 1-5]
-
 [Part A]
+
+[Round 1-5]
 
 Focus: hadoop-engineer
 
@@ -41,9 +41,9 @@ Remaining risk:
 Accepted commit: 8364c79e386046d58ca653ee9ecc81f2c65648f9
 --------------------
 
-[Rounds 1-2]
-
 [Part B] 
+
+[Rounds 1-2]
 
 Focus: hadoop-engineer 
 
@@ -80,9 +80,9 @@ Accepted commit: 3c554ace31c2f0bda1415d68a8cd06560f42584c
 
 --------------------
 
---------------------
+[Part C]
 
-[Closeout] [Part C]
+[Closeout] 
 
 Focus: final Phase 4 steps (main class, EMR smoke script, adversarial tests, main-class rule)
 
@@ -101,7 +101,13 @@ REQUEST_CHANGES (2 major fence bypasses). Live constitution unchanged.
 Round 3 in a later phase.
 
 My notes:
--
+Going forward for Phase 5
+- Fresh session: the project rule in docs/agents.md is one fresh session per phase. Restart Claude Code after the commit. No amendment was applied, so the restart isn't required for ratification; it just gives Phase 5 a clean start.
+- Work order: write docs/agent-runs/phase-05/prompt.md, as you did for prompt.md in Phase 4. Phase 5 is probably entity resolution (CLAUDE.md's pipeline order) but confirm against your course spec. Then tell the new session to read it, along with Phase 4's resume-point.md.
+- Carry these into Phase 5:
+entity-resolution-engineer writes the versioned blocking spec (option b), and the deferred recall findings E-F1 to E-F10 are reviewed against it;
+factory-engineer round 3 of the main-class amendment, if you want local main-class runs.
+
 
 Manual changes:
 - N/A
@@ -114,143 +120,4 @@ Remaining risk:
 - CDATA or comment containing a record start tag ends a record early (rejected)
 - Blank normalized names reject the whole work; Indic vowel stripping can merge names
 
-Accepted commit:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
---------------------
-COMING UP TO DO:
-Part A: It built the first big-data stage for DBLP alone: MapReduce jobs that parse the raw DBLP XML into work and author records, then expand each paper's author team into the coauthor pairs that the collaboration graph will be built from.
-
-Part B: It brings in the other scholarly datasets (OpenAlex, Crossref, OpenCitations, arXiv), extracts their identifiers, and prepares the blocking groups and match candidates that entity resolution needs, then packages everything into the partitioned export files that Spark will read to build the graph.
-
---------------------
-FINAL PHASE 4 STEPS:
-Phase 04, final steps (closeout). Read docs/agent-runs/phase-04/resume-point.md first.
-Delegate everything; the orchestrator does no specialist work.
-
-STAGE 1 (this session; items 1 and 2 can run in parallel)
-
-1. factory-engineer: main-class run rule amendment, round 2.
-   - Start from factory-engineer-amendment-report.md and
-     code-reviewer-report-amendment-round1.md (F1 to F7).
-   - Rule needed: hadoop-engineer may run a hadoop main class locally for a
-     bounded run over datasets/samples. Use the form the guard can check
-     (for example plain `java -cp ... <MainClass>`), and keep `sbt run`/`runMain`
-     blocked. Also address the quote-spliced/backslash sbt run gap (amendment F1).
-   - Stage the change as a patch in the scratchpad. Never edit the live
-     constitutional files. Run the validator against the patched copy.
-   - Present the full diff, then code-reviewer reviews the amendment.
-   - STOP for my ratification.
-
-2. test-engineer: adversarial tests for phase 04 parts A and B, under tests/** only.
-   - Targets: malformed and truncated XML/JSON/CSV, Unicode and confusable names,
-     duplicate DOIs, giant teams, oversize blocks, reject output, provenance on
-     every record, determinism, and Job 7 co-partitioning (one work's entities
-     land in the same part file).
-   - Report exact pass/fail counts. Failing tests stay red and go to hadoop-engineer.
-
-STAGE 2 (new session, after I ratify, commit, and restart)
-
-3. hadoop-engineer: add a part B driver main class (SourcePipelineMain) for
-   jobs 2, 3, 4+5 and 7, with argument validation tests. Do a local bounded run
-   under the ratified rule. Also close round-2 MINOR 1 (a test that fails if
-   Job 7's partitioner wiring is removed).
-4. infra-engineer: write scripts/run-bounded-pipeline.sh, the bounded EMR
-   smoke run for jobs 1 to 7 over the sample mirror.
-   - Interface (agents.md section 7): environment first argument (dev only),
-     bash strict mode, no prompts, greppable step markers, explicit size and
-     time bounds.
-   - Validate with bash -n plus shellcheck if available. No execution, no
-     terraform apply.
-   - Any missing Terraform (EMR, buckets, IAM) goes to fmt/validate/plan only,
-     or is listed as BLOCKED-ON.
-   - deploy-engineer runs the script later, not in this phase.
-5. code-reviewer: closeout review of the stage 2 change set and test-engineer's tests.
-6. Route any failing tests or findings to their owners, rerun, and update
-   resume-point.md. Then stop for my part B gate and commit.
-
-Gates: sbt check exit 0 before any report. Report per docs/agents.md section 11.
-[Part B]  Rounds 1-2
-
-Focus: hadoop-engineer built jobs 2, 3, 4+5, 7 (external sources, identifiers,
-blocking, match candidates, Spark export). entity-resolution-engineer reviewed
-the blocking (read-only).
-
-Reviewed:
-- Round 1: REQUEST_CHANGES (2 major, 3 minor). All fixed in repair 1.
-- Round 2: APPROVE (2 minor, non-blocking).
-- sbt check passed: core 143/143, hadoop 50/50.
-
-Decision: ACCEPTED, for Part B
-
-Notes (details in human-decisions-2026-10-29.md):
-- Accepted the 11 new record types in the hadoop module.
-- Blocking-key ownership: option b. entity-resolution writes the spec,
-  hadoop implements it.
-- Entity-resolution findings kept as known risks; fix in a later phase.
-
-My notes:
--
-
-Manual changes:
-- N/A
-
-Remaining risk:
-- Blocking may miss true matches (split blocks, suffixes, name order); recall
-  not yet measured.
-- Part B runs only through tests until a main class exists (closeout stage 2).
-- Real-data gaps: compressed arXiv, quoted CSV fields, very large blocks.
-
-Accepted commit:
-
-[Part B]  Rounds 1-2
-
-Focus: hadoop-engineer built jobs 2, 3, 4+5, 7 (external sources, identifiers,
-blocking, match candidates, Spark export). entity-resolution-engineer reviewed
-the blocking (read-only).
-
-Reviewed:
-- Round 1: REQUEST_CHANGES (2 major, 3 minor). All fixed in repair 1.
-- Round 2: APPROVE (2 minor, non-blocking).
-- sbt check passed: core 143/143, hadoop 50/50.
-
-Decision: ACCEPTED, for Part B
-
-Notes (details in human-decisions-2026-10-29.md):
-- Accepted the 11 new record types in the hadoop module.
-- Blocking-key ownership: option b. entity-resolution writes the spec,
-  hadoop implements it.
-- Entity-resolution findings kept as known risks; fix in a later phase.
-
-My notes:
--
-
-Manual changes:
-- N/A
-
-Remaining risk:
-- Blocking may miss true matches (split blocks, suffixes, name order); recall
-  not yet measured.
-- Part B runs only through tests until a main class exists (closeout stage 2).
-- Real-data gaps: compressed arXiv, quoted CSV fields, very large blocks.
-
-Accepted commit:
+Accepted commit: 06559d0ccd5cff6837206e50014466a9ba8fe407
