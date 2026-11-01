@@ -1,0 +1,601 @@
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+index d42a982..7a8f2e3 100755
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -7,8 +7,11 @@
+ #   Bash writes to constitutional files by anyone except factory-engineer; forged test markers;
+ #   writes to human evidence; operational scripts run by the wrong agent or environment; dataset
+ #   scripts outside the section 7b map (including protected paths after normalization); and any
+-#   non-evidence command from a read-only agent.
+-#   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts (section 12).
++#   non-evidence command from a read-only agent; sbt run tasks however they are spelled; and direct
++#   JVM and cluster launchers (java, java @argfile, hadoop jar, spark-submit, ...) for every caller,
++#   except hadoop-engineer's checked local main-class form (docs/agents.md section 7c).
++#   It returns permissionDecision "ask" for dataset-engineer's network dataset scripts and for the
++#   section 7c local main-class run (section 12).
+ # The message names the legitimate path so a block becomes routing, not a retry loop.
+ # Fails closed: without Python or with unparseable input every command is blocked.
+ # Owner: factory-engineer (constitutional artifact). Keep ROSTER and the maps in sync with docs/agents.md.
+@@ -51,6 +54,22 @@ dataset_script_runners() {
+     *)                       echo "unknown" ;;
+   esac
+ }
++# Phase-04 amendment (docs/agents.md section 7c, rule R7C-MAIN): the one agent that may launch a JVM
++# directly, the main classes it may launch (lower case), the 1-based program argument that is the
++# output base of each class, and the modules whose compiled classes may be on the classpath.
++# Adding an agent, a class, or a module is a constitutional amendment.
++LOCAL_MAIN_AGENT="hadoop-engineer"
++local_main_out_arg() {
++  case "$1" in
++    edu.uic.cs441.scholarchain.hadoop.dblppipelinemain)   echo 3 ;;
++    edu.uic.cs441.scholarchain.hadoop.sourcepipelinemain) echo 1 ;;
++    *)                                                    echo "" ;;
++  esac
++}
++LOCAL_MAIN_CP_MODULES="core hadoop"
++# Phase-04 amendment (section 7c, rule R7C-JVM): direct JVM and cluster launchers, blocked for every
++# caller except version queries and the R7C-MAIN form.
++JVM_LAUNCHERS=" java javaw javac jdb jshell jrunscript jjs scala scala3 scalac scala-cli amm jbang kotlin kotlinc groovy coursier cs mvn mvnw gradle gradlew spark-submit spark-shell spark-class spark-sql pyspark sparkr hadoop yarn mapred hdfs "
+ # ---------------------------------------------------------------------------------------------
+ 
+ SC_INPUT="$(cat)"
+@@ -444,17 +463,45 @@ fi
+ # line, including after a project or config axis (core/run, Test/runMain), a ';' or '~' prefix, a
+ # quoted multi-command string, --client, or a bash -c wrapper. Fail closed: the whole command text
+ # after the first sbt word is scanned, so an unrelated later word can also trigger a block.
+-if has "$cmd" "(^|[^a-z0-9_.-])sbtn?(\.bat|\.exe)?([[:space:]\"']|$)"; then
+-  read -ra SBT_T <<< "$(printf '%s' "$cmd" | tr "\"';&|()\`[:space:]" ' ')"
+-  sbt_on=0
+-  for t in "${SBT_T[@]}"; do
++# Phase-04 amendment (docs/agents.md section 7c; amendment review round 1, F1): the scan runs twice.
++# Pass 1 splits the text at quotes, operators, and whitespace (as before). Pass 2 (sbt_words) builds
++# the words bash builds (toks_of: quoted parts joined, unquoted backslashes dropped) and re-splits
++# every quoted multi-word token the same way, so 'hadoop/runM''ain', "run""Main", hadoop/ru\n, and
++# bash -c "sbt 'ru''n'" are seen as runMain and run. In both passes the scope is stripped at the last
++# '/' or ':' (test:run, hadoop/test:runMain), and kebab-case spellings and 'alias' are blocked too.
++sbt_words() {   # <string> <depth>: print the bash-built words of the string, one per line
++  local d="$2" w x
++  local -a SW XS
++  (( d > 4 )) && { printf '%s\n' "@sbt-too-deep@"; return 0; }
++  toks_of "${1//$'\n'/ }"; SW=("${W[@]}")
++  for w in "${SW[@]}"; do
++    if [[ "$w" == *[[:space:]\"\'\\]* ]]; then
++      sbt_words "$w" $((d+1))
++    else
++      read -ra XS <<< "${w//[;&|()\`]/ }"
++      for x in "${XS[@]}"; do printf '%s\n' "$x"; done
++    fi
++  done
++}
++sbt_scan() {   # <word>...: block an sbt run, console, eval, set, alias, or markTestRun task word
++  local t b sbt_on=0
++  for t in "$@"; do
++    [ "$t" = "@sbt-too-deep@" ] && sc_block "nested quoted command strings around sbt are too deep to verify (fail closed)."
+     if (( ! sbt_on )); then b="${t//\\//}"; b="${b##*/}"; case "$b" in sbt|sbtn|sbt.bat|sbt.exe|sbtn.exe) sbt_on=1 ;; esac; continue; fi
+-    t="${t#"${t%%[!;~]*}"}"; t="${t##*/}"
++    t="${t#"${t%%[!;~]*}"}"; t="${t##*[/:]}"
+     case "$t" in
+-      marktestrun|eval|set|run|runmain|bgrun|bgrunmain|fgrun|fgrunmain|console|consolequick|consoleproject|restart)
+-        sc_block "sbt '$t' is blocked for every agent: it forges the test marker (markTestRun is reachable only through 'sbt check') or runs arbitrary build or application code. Use 'sbt check', 'sbt compile', 'sbt Test/compile', 'sbt test', or 'sbt fmt'. Report any need to run a main class as MANUAL ACTION REQUIRED." ;;
++      marktestrun|eval|set|alias|run|runmain|bgrun|bgrunmain|fgrun|fgrunmain|console|consolequick|consoleproject|restart|run-main|bg-run|bg-run-main|fg-run|fg-run-main|console-quick|console-project|re-start)
++        sc_block "sbt '$t' is blocked for every agent: it forges the test marker (markTestRun is reachable only through 'sbt check') or runs arbitrary build or application code. Use 'sbt check', 'sbt compile', 'sbt Test/compile', 'sbt test', or 'sbt fmt'. hadoop-engineer runs its own main classes only in the section 7c form (docs/agents.md); anyone else reports the need as MANUAL ACTION REQUIRED." ;;
+     esac
+   done
++  return 0
++}
++# Trigger: 's', 'b', 't' with only quotes or backslashes between them (s''bt and sb\t count).
++if has "$cmd" "s[\"'\\\\]*b[\"'\\\\]*t"; then
++  read -ra SBT_T <<< "$(printf '%s' "$cmd" | tr "\"';&|()\`[:space:]" ' ')"
++  sbt_scan "${SBT_T[@]}"
++  mapfile -t SBT_T < <(sbt_words "$cmd" 0)
++  sbt_scan "${SBT_T[@]}"
+ fi
+ 
+ # ---- 7. GitHub CLI mutations ---------------------------------------------------------------------
+@@ -1194,6 +1241,344 @@ while IFS= read -r SEG; do
+   exec_scan 0 "$piped"
+ done <<< "$segments10"
+ 
++# ---- 10c. Local main-class runs and direct JVM launchers (docs/agents.md section 7c) -------------
++# Phase-04 amendment (code-reviewer round 4, item 4; human decision 2026-10-27 row 5). Two rules:
++# R7C-MAIN: LOCAL_MAIN_AGENT (hadoop-engineer) may launch exactly this form, and nothing else:
++#     java [-Xmx<n>[k|m|g]] [-Xms<n>[k|m|g]] -cp "<classpath>" <main-class> <arguments...>
++#          [> <file> | 2> <file> | >> <file> | 2>&1 ...]
++#   - one simple command: outside quotes no ; | && || ( ) $ ` < # ~ { } [ ] * ? or newline, and no
++#     $ or ` (which expand) or > or & inside quotes; no VAR=value prefix, wrapper, or launcher path;
++#   - the main class is in local_main_out_arg; the classpath has only the compiled classes directories
++#     of LOCAL_MAIN_CP_MODULES (modules/<m>/target/scala-*/classes, no test-classes) and .jar files
++#     in the Coursier cache, each existing, none with a wildcard;
++#   - program arguments are positional (no options); argument local_main_out_arg is the output base
++#     and must resolve strictly inside the scratchpad or a temp directory, without glob characters;
++#     every other path-like argument is an input and must resolve strictly inside datasets/samples/
++#     and exist (a { } or [ ] Hadoop glob only in the last component; * and ? never, because the
++#     Windows java launcher expands them); a bare argument must not name an existing path in the
++#     working directory, CLAUDE.md, or human-gate.md; no remote scheme, 'file://host', ~, or $;
++#   - redirect targets resolve strictly inside the scratchpad or a temp directory;
++#   - paths are the words bash builds (toks_of), resolved against the working directory with
++#     normpath and realpath (8.3 names, junctions, symlinks), then R4-PROTNORM (ds_prot_hit) runs too.
++#   A passing command gets permissionDecision "ask" (section 12): every run is approved by the human.
++# R7C-JVM: every other direct JVM or cluster launch (JVM_LAUNCHERS: java, java @argfile, javaw,
++#   jshell, hadoop jar, spark-submit, ...) is blocked for every caller, the orchestrator included:
++#   as the command word (any path, .exe/.cmd/.bat) after VAR=value prefixes and keywords; after the
++#   wrappers in JVM_WRAP (options and their arguments skipped); as the target of find -exec and xargs;
++#   inside bash -c, eval, env -S, cmd /c, pwsh -c, and su -c strings; and in a form that can only be a
++#   command (bin/<name>, <name>.exe/.cmd/.bat) anywhere after a wrapper. A glob command word, and a
++#   variable command word naming java, jdk, jre, hadoop, spark, scala, ..., are blocked too. Version
++#   queries pass (java -version, hadoop version, hadoop checknative). Not followed (residual RR-13 to
++#   RR-15): renamed or copied launchers, launchers built at run time (J=ja; ${J}va), inline interpreter
++#   code, script files run by path, and JVM option variables set in the user's shell profile.
++JVM_WRAP=" sudo doas env nohup command exec builtin nice ionice stdbuf setsid timeout chrt taskset busybox watch unbuffer winpty start time su runuser script flock cmd powershell pwsh wsl xargs parallel "
++MSG_JVM="Direct JVM and cluster launches (java, java @argfile, javaw, jshell, hadoop jar, spark-submit, sbt run, ...) are blocked for every caller (docs/agents.md section 7c, rule R7C-JVM). hadoop-engineer runs DblpPipelineMain and SourcePipelineMain only in the R7C-MAIN form: java -cp \"<Compile classpath>\" <main-class> <arguments>, inputs under datasets/samples/, the output base in the scratchpad or a temp directory. Anyone else reports the run as MANUAL ACTION REQUIRED with the exact intended command. Version queries (java -version, hadoop version) are allowed."
++jvm_base() { local b; b="$(base_of "$1")"; b="${b%.cmd}"; b="${b%.bat}"; printf '%s' "$b"; }
++jvm_version_ok() {   # <launcher> <remaining words>: true for a version query only
++  case "$1" in
++    hadoop) case "$2" in version|checknative|"checknative -a") return 0 ;; esac ;;
++    yarn|mapred|hdfs) [ "$2" = version ] && return 0 ;;
++    java|javaw|javac|jdb) case "$2" in -version|--version|-fullversion|-showversion) return 0 ;; esac ;;
++    *) case "$2" in -version|--version) return 0 ;; esac ;;
++  esac
++  return 1
++}
++
++# lm_simple <raw command>: true when it is one simple command (see R7C-MAIN above).
++lm_simple() {
++  local s="$1" i n=${#1} ch q=""
++  for ((i=0; i<n; i++)); do
++    ch="${s:i:1}"
++    if [ "$q" = "'" ]; then
++      case "$ch" in "'") q="" ;; '>'|'&') return 1 ;; esac
++      continue
++    fi
++    if [ "$q" = '"' ]; then
++      case "$ch" in '"') q="" ;; '\') i=$((i+1)) ;; '$'|'`'|'>'|'&') return 1 ;; esac
++      continue
++    fi
++    case "$ch" in
++      "'"|'"') q="$ch" ;;
++      '\') i=$((i+1)) ;;
++      '&') [ "${s:i-1:1}" = ">" ] && [[ "${s:i+1:1}" == [12] ]] || return 1 ;;
++      ';'|'|'|'('|')'|'$'|'<'|'`'|'#'|'{'|'}'|'['|']'|'*'|'?'|'~'|$'\n'|$'\r') return 1 ;;
++    esac
++  done
++  [ -z "$q" ]
++}
++lm_block() {
++  sc_block "$1 hadoop-engineer's local main-class run has exactly one form (docs/agents.md section 7c, rule R7C-MAIN): java [-Xmx<n>g] -cp \"<output of sbt -batch -error 'export hadoop/Compile/fullClasspath'>\" edu.uic.cs441.scholarchain.hadoop.<DblpPipelineMain|SourcePipelineMain> <arguments> [> <scratchpad file> 2>&1], one simple command run from the repository root, every input under datasets/samples/, the output base in the scratchpad or a temp directory. sbt run and runMain stay blocked."
++}
++LM_OK=0
++lm_main_check() {   # R7C-MAIN on the whole command; blocks with the reason, or sets LM_OK=1
++  local -a A CPE LMQ
++  local n i j=0 cp="" main outn a p e nx="" redir=0 bad hit
++  lm_simple "$raw" || lm_block "The command is not one simple command (no ;, |, &&, \$, backticks, subshells, <, unquoted globs or braces, ~, #, or quoted > and &)."
++  toks_of "$cmd"; A=("${W[@]}"); n=${#A[@]}
++  case "${A[0]:-}" in java|java.exe) ;; *) lm_block "The command word must be 'java' on PATH, with no VAR=value prefix, wrapper, or path (got '${A[0]:-}')." ;; esac
++  i=1
++  while (( i < n )); do
++    a="${A[i]}"
++    case "$a" in
++      -cp|-classpath|--class-path)
++        [ -z "$cp" ] || lm_block "Only one classpath option is allowed."
++        cp="${A[i+1]:-}"; [ -n "$cp" ] || lm_block "The classpath is empty."
++        i=$((i+2)); continue ;;
++      -xm[xs]*)
++        [[ "$a" =~ ^-xm[xs][0-9]+[kmg]?$ ]] || lm_block "The JVM option '$a' is not allowed."
++        i=$((i+1)); continue ;;
++      -*|@*) lm_block "The JVM option '$a' is not allowed (only -cp and -Xmx/-Xms; no -D, -jar, agents, module paths, @argfiles, or -XX)." ;;
++    esac
++    break
++  done
++  [ -n "$cp" ] || lm_block "A literal -cp classpath is required."
++  main="${A[i]:-}"; outn="$(local_main_out_arg "$main")"
++  [ -n "$outn" ] || lm_block "The main class '$main' is not in the section 7c table."
++  i=$((i+1))
++  LMQ=()
++  IFS=';' read -ra CPE <<< "$cp"
++  for e in "${CPE[@]}"; do
++    [ -n "$e" ] || lm_block "The classpath has an empty entry."
++    [[ "$e" == *[\*\?]* ]] && lm_block "The classpath entry '$e' is a wildcard."
++    LMQ+=("C $e")
++  done
++  for ((; i<n; i++)); do
++    a="${A[i]}"
++    if [ -n "$nx" ]; then LMQ+=("R $a"); nx=""; continue; fi
++    if [[ "$a" =~ ^[12]?\>\&[12]$ ]]; then redir=1; continue; fi
++    if [[ "$a" =~ ^[12]?\>\>?$ ]]; then redir=1; nx=1; continue; fi
++    if [[ "$a" =~ ^[12]?\>\>?(.+)$ ]]; then redir=1; LMQ+=("R ${BASH_REMATCH[1]}"); continue; fi
++    (( redir )) && lm_block "Program arguments must come before the redirections (got '$a')."
++    j=$((j+1))
++    case "$a" in
++      ''|*'>'*|*'&'*|*'$'*|*'`'*|*'~'*|*'<'*) lm_block "Argument $j ('$a') is empty or not literal." ;;
++      *'*'*|*'?'*) lm_block "Argument $j ('$a') contains * or ?, which the Windows java launcher expands itself and which would shift the positional arguments; use a quoted {a,b} or [..] glob in the last component." ;;
++      -*) lm_block "Argument $j ('$a') is an option; the section 7c main classes take positional arguments only." ;;
++    esac
++    if [[ "$a" =~ ^[a-z][a-z0-9+.-]*:// ]] && [[ "$a" != file://* ]] \
++       || [[ "$a" =~ (^|[^a-z0-9])(s3[an]?|hdfs|webhdfs|swebhdfs|https?|ftp|sftp|abfss?|wasbs?|gs|adl|viewfs|har|o3fs|ofs|jdbc|wss?):. ]]; then
++      lm_block "Argument $j ('$a') names a remote file system or URL; local runs are offline (EMR runs go through /run-pipeline, deploy-engineer)."
++    fi
++    p="$a"
++    if [[ "$p" == file:* ]]; then
++      p="${p#file:}"
++      [[ "$p" =~ ^//[^/] ]] && lm_block "Argument $j ('$a') is a file://host URI."
++      if [[ "$p" =~ ^/+([a-z]:.*)$ ]]; then p="${BASH_REMATCH[1]}"; else p="/${p#"${p%%[!/]*}"}"; fi
++    fi
++    if (( j == outn )); then
++      [[ "$p" == *[\{\}\[\]]* ]] && lm_block "The output base (argument $j, '$a') contains glob characters."
++      LMQ+=("O $p"); continue
++    fi
++    if [[ "$p" == */* ]] || [[ "$p" == *\\* ]] || [[ "$p" == .* ]] || [[ "$p" =~ ^[a-z]: ]] || [[ "$p" == *[\{\}\[\]]* ]] || [[ "$a" == file:* ]]; then
++      p="${p//\\//}"
++      if [[ "$p" == *[\{\}\[\]]* ]]; then
++        [[ "$p" == */* ]] || lm_block "The input glob '$a' must name a directory under datasets/samples/."
++        [[ "${p%/*}" == *[\{\}\[\]]* ]] && lm_block "The input glob '$a' has glob characters outside its last component."
++        LMQ+=("G ${p%/*}")
++      else
++        LMQ+=("I $p")
++      fi
++      continue
++    fi
++    if [[ "$p" =~ ^(claude\.md|human-gate\.md)$ ]] || [ -e "$LM_CWD/$p" ]; then
++      lm_block "Argument $j ('$a') names an existing path or a protected file in the working directory; write inputs as datasets/samples/... and the output base as a scratchpad path."
++    fi
++  done
++  [ -z "$nx" ] || lm_block "A redirection has no target."
++  (( j >= outn )) || lm_block "The output base (argument $outn) is missing."
++  bad="$(printf '%s\n' "${LMQ[@]}" | SC_CWD="$LM_CWD" SC_ROOT="$(sc_repo_root)" SC_SCRATCH="$(sc_field scratchpad_dir)" \
++         SC_MODS="$LOCAL_MAIN_CP_MODULES" PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
++import os, re, sys
++def norm(p):
++    p = (p or "").replace("\\", "/")
++    if os.name == "nt":
++        m = re.match(r"^/(?:cygdrive/|mnt/)?([a-zA-Z])(?:/|$)(.*)$", p)
++        if m:
++            p = m.group(1) + ":/" + m.group(2)
++    return p
++def absn(p, base):
++    p = norm(p)
++    if not os.path.isabs(p):
++        p = os.path.join(base, p)
++    return os.path.normcase(os.path.normpath(os.path.abspath(p)))
++def real(p):
++    return os.path.normcase(os.path.realpath(p))
++def rel_in(child, parent):
++    try:
++        rel = os.path.relpath(child, parent)
++    except ValueError:
++        return None
++    if rel == os.curdir or rel == os.pardir or rel.startswith(os.pardir + os.sep):
++        return None
++    return rel.replace(os.sep, "/").lower()
++def under(p, roots):
++    return any(rel_in(p, r) is not None for r in roots)
++root = absn(os.environ["SC_ROOT"], os.getcwd())
++cwd = absn(os.environ.get("SC_CWD") or os.environ["SC_ROOT"], root)
++temps = [absn(t, root) for t in [os.environ.get(k) for k in ("SC_SCRATCH", "TMPDIR", "TEMP", "TMP")] + ["/tmp"] if t]
++temps = [t for t in temps if rel_in(t, root) is None and t != root]
++temps += [real(t) for t in temps]
++home = os.path.expanduser("~")
++caches = [os.environ.get("COURSIER_CACHE"),
++          os.path.join(os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local"), "Coursier", "Cache"),
++          os.path.join(home, ".cache", "coursier"), os.path.join(home, "Library", "Caches", "Coursier")]
++caches = [absn(c, root) for c in caches if c]
++caches += [real(c) for c in caches]
++classes = re.compile(r"^modules/(%s)/target/scala-[^/]+/classes$" % "|".join(re.escape(m) for m in os.environ["SC_MODS"].split()))
++samples = re.compile(r"^datasets/samples/.+")
++def ok(kind, p):
++    t = absn(p, cwd)
++    r = real(t)
++    if kind == "C":
++        if os.path.isdir(t):
++            a, b = rel_in(t, root), rel_in(r, real(root))
++            return bool(a and b and classes.match(a) and classes.match(b))
++        return os.path.isfile(t) and t.endswith(".jar") and under(t, caches) and under(r, caches)
++    if kind in ("I", "G"):
++        a, b = rel_in(t, root), rel_in(r, real(root))
++        if not (a and b and samples.match(a) and samples.match(b)):
++            return False
++        return os.path.isdir(t) if kind == "G" else os.path.exists(t)
++    # O, R: strictly inside a temp root, outside the repository, also after realpath of the
++    # nearest existing ancestor (junctions and symlinks)
++    if rel_in(t, root) is not None or rel_in(r, real(root)) is not None:
++        return False
++    anc = t
++    while not os.path.exists(anc) and os.path.dirname(anc) != anc:
++        anc = os.path.dirname(anc)
++    return under(t, temps) and under(real(anc), temps)
++for line in sys.stdin.read().split("\n")[:-1]:
++    kind, p = line[:1], line[2:]
++    try:
++        good = ok(kind, p)
++    except Exception:
++        good = False
++    if not good:
++        print(line)
++        break
++')" || lm_block "The path arguments could not be resolved (fail closed)."
++  if [ -n "$bad" ]; then
++    case "${bad%% *}" in
++      C) lm_block "The classpath entry '${bad#* }' is not an existing compiled classes directory of modules $LOCAL_MAIN_CP_MODULES (modules/<m>/target/scala-*/classes) or an existing .jar in the Coursier cache." ;;
++      I|G) lm_block "The input '${bad#* }' does not resolve to an existing path strictly inside datasets/samples/." ;;
++      O) lm_block "The output base '${bad#* }' does not resolve strictly inside the scratchpad or a temp directory outside the repository." ;;
++      R) lm_block "The redirect target '${bad#* }' does not resolve strictly inside the scratchpad or a temp directory outside the repository." ;;
++    esac
++    lm_block "A path could not be verified (fail closed)."
++  fi
++  hit="$(ds_prot_hit)" || lm_block "The paths could not be resolved (fail closed)."
++  [ -n "$hit" ] && lm_block "The word '$hit' resolves to a protected path (R4-PROTNORM)."
++  LM_OK=1
++  return 0
++}
++
++jvm_verdict() {   # <index of a launcher word in A>
++  local b
++  b="$(jvm_base "${A[$1]}")"
++  jvm_version_ok "$b" "${A[*]:$1+1}" && return 0
++  sc_block "'$b' launches a JVM or cluster job directly. $MSG_JVM"
++}
++jvm_cmdform() {   # <word>: a launcher named so that it can only be a command (bin/<name>, .exe/.cmd/.bat)
++  local w="${1//\\//}" d
++  in_list "$(jvm_base "$w")" "$JVM_LAUNCHERS" || return 1
++  case "$w" in *.exe|*.cmd|*.bat) return 0 ;; esac
++  [[ "$w" == */* ]] || return 1
++  d="${w%/*}"; d="${d##*/}"
++  [ "$d" = bin ]
++}
++jvm_at() {   # <index of the command word in A> <depth>
++  local i="$1" depth="$2" n=${#A[@]} t b k optarg
++  (( i < n )) || return 0
++  t="${A[i]}"; b="$(jvm_base "$t")"
++  if in_list "$b" "$JVM_LAUNCHERS"; then jvm_verdict "$i"; return 0; fi
++  if [ "$t" != "[" ] && [ "$t" != "[[" ] && [[ "$t" == *[\*\?\[]* ]]; then
++    sc_block "the command word '$t' is a glob, so the program cannot be verified (fail closed). $MSG_JVM"
++  fi
++  if nonliteral "$t" && has "$t" "java|jdk|jre|spark|hadoop|scala|jbang|coursier|gradle|mvn|yarn|mapred"; then
++    sc_block "the variable command word '$t' names a JVM or cluster tool. $MSG_JVM"
++  fi
++  if [ "$b" = eval ]; then jvm_seg "${A[*]:i+1}" $((depth+1)); return 0; fi
++  if is_interp "$b" && [ "$b" != source ] && [ "$b" != . ]; then
++    W=("${A[@]}"); interp_opts $((i+1))
++    if [ "$IO_C" = 1 ] && (( IO_M < n )); then jvm_seg "${A[IO_M]}" $((depth+1)); fi
++    return 0
++  fi
++  if [ "$b" = find ]; then
++    for ((k=i+1; k<n-1; k++)); do
++      case "${A[k]}" in -exec|-execdir|-ok|-okdir) ( jvm_at $((k+1)) "$depth" ) || exit 2 ;; esac
++    done
++    return 0
++  fi
++  in_list "$b" "$JVM_WRAP" || return 0
++  for ((k=i+1; k<n; k++)); do
++    [[ "${A[k]}" == *[[:space:]]* ]] && jvm_seg "${A[k]}" $((depth+1))
++    jvm_cmdform "${A[k]}" && jvm_verdict "$k"
++  done
++  # The wrapped command: skip options and their arguments, numbers and durations, VAR=value words,
++  # and the one positional operand of su, runuser, script, flock, taskset, and chrt.
++  # Options that take a separate argument, per wrapper (the command text is lower case).
++  case "$b" in
++    env)            optarg=" -u --unset --chdir " ;;
++    sudo|doas)      optarg=" -u -g -h -p -r -t -d -U --user --group --host --prompt " ;;
++    timeout)        optarg=" -k --signal --kill-after " ;;
++    nice|ionice)    optarg=" -n -p -t --adjustment " ;;
++    xargs|parallel) optarg=" -i -a -d -e -l -n -p --arg-file --delimiter --max-args --max-procs --replace --eof " ;;
++    watch)          optarg=" -n -d --interval " ;;
++    wsl)            optarg=" -d -u --distribution --user --cd " ;;
++    su|runuser)     optarg=" -g -s --group --shell " ;;
++    *)              optarg=" -u -g -n " ;;
++  esac
++  k=$((i+1))
++  while (( k < n )); do
++    case "${A[k]}" in
++      -c|/c|/k|-command|-s|--split-string|--command)
++        if [ "$b" = timeout ] && [ "${A[k]}" = -s ]; then k=$((k+2)); continue; fi
++        (( k+1 < n )) && jvm_seg "${A[k+1]}" $((depth+1)); k=$((k+2)) ;;
++      -*|/?) if in_list "${A[k]}" "$optarg"; then k=$((k+2)); else k=$((k+1)); fi ;;
++      *)
++        if [[ "${A[k]}" =~ ^[0-9]+(\.[0-9]+)?[smhd]?$ ]] || [[ "${A[k]}" =~ ^0x[0-9a-f]+$ ]] || [[ "${A[k]}" =~ ^[a-z_][a-z0-9_]*\+?= ]]; then
++          k=$((k+1))
++        else
++          break
++        fi ;;
++    esac
++  done
++  case "$b" in su|runuser|script|flock|taskset|chrt) (( k < n )) && ! in_list "$(jvm_base "${A[k]}")" "$JVM_LAUNCHERS" && k=$((k+1)) ;; esac
++  (( k < n )) && jvm_at "$k" "$depth"
++  return 0
++}
++jvm_seg() {   # <command string> <depth>: R7C-JVM on every segment of the string
++  local str="$1" depth="$2" seg i n
++  local -a A
++  (( depth > 4 )) && sc_block "nested command strings are too deep to verify for JVM launches (fail closed)."
++  while IFS= read -r seg; do
++    [ -n "${seg//[[:space:]]/}" ] || continue
++    toks_of "$seg"; A=("${W[@]}"); n=${#A[@]}
++    i=0
++    while (( i < n )); do
++      if [[ "${A[i]}" =~ ^[a-z_][a-z0-9_]*\+?= ]]; then i=$((i+1)); continue; fi
++      in_list "${A[i]}" "$KEYWORDS" && { i=$((i+1)); continue; }
++      break
++    done
++    (( i < n )) && jvm_at "$i" "$depth"
++  done <<< "$(printf '%s\n' "$str" | sed -E 's/\|\|/;/g' | tr ';|&()`' '\n\n\n\n\n\n')"
++  return 0
++}
++
++LM_CWD="$(sc_field cwd)"; [ -n "$LM_CWD" ] || LM_CWD="$(sc_repo_root)"; LM_CWD="${LM_CWD//\\//}"
++toks_of "$cmd"
++if [ "$caller" = "$LOCAL_MAIN_AGENT" ] && [ "$tool" = "Bash" ] && { [ "${W[0]:-}" = java ] || [ "${W[0]:-}" = java.exe ]; } \
++   && ! jvm_version_ok java "${W[*]:1}"; then
++  lm_main_check
++fi
++JVM_ALT="$(printf '%s' "$JVM_LAUNCHERS" | sed 's/^ *//; s/ *$//; s/ /|/g')"
++# A command word built by command substitution that looks up a launcher ("$(which java)" -cp a M):
++# the segment split above cuts it at '(' and ')', so it is matched on the whole text (fail closed).
++if has "$cmd" "(^|[;&|({]|then|do|else)[[:space:]]*\"?(\\$\\(|\`)[[:space:]]*(which|command|type|where|where\\.exe|whereis|readlink|realpath)[^)\`]*[^a-z0-9_.-]($JVM_ALT)([^a-z0-9_-]|$)"; then
++  sc_block "a command word built by command substitution names a JVM or cluster launcher. $MSG_JVM"
++fi
++(( LM_OK )) || jvm_seg "$cmd_nr" 0
++
+ # ---- 11. Read-only agents and unregistered subagents: evidence-gathering commands only ----------
+ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" || ! in_list "$caller" "$ROSTER"; }; then
+   ro_block() {
+@@ -1321,8 +1706,13 @@ fi
+ # Reached only when nothing above blocked. settings.json ask rules cover the repository-relative
+ # forms; this covers every other form (absolute paths, cwd-relative names, wrappers). Only
+ # dataset-engineer can get here while running them; for any other caller section 10 has blocked.
++# LM_OK is set only by lm_main_check (section 10c) for hadoop-engineer's checked main-class run.
+ if [ "$caller" = "dataset-engineer" ] && has "$cmd" "(^|[/[:space:]\"'\\\\])fetch(-by-id)?\.sh([^a-z0-9_.-]|$)"; then
+   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"guard-dangerous: datasets/scripts/fetch.sh and fetch-by-id.sh use the network, so the human approves each run (docs/agents.md section 7b)."}}'
++elif (( LM_OK )); then
++  # Phase-04 amendment (section 7c, R7C-MAIN; amendment review F4): the ask comes from the checked
++  # flag set by lm_main_check, not from a text pattern, so every spelling that passed the check asks.
++  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"guard-dangerous: hadoop-engineer local main-class run (docs/agents.md section 7c, R7C-MAIN). It runs agent-authored code; check the main class, that inputs are under datasets/samples/ and the output base is in the scratchpad, then approve."}}'
+ fi
+ 
+ exit 0
+diff --git a/.claude/hooks/validate-agent-files.sh b/.claude/hooks/validate-agent-files.sh
+index 5915d89..e7443a0 100755
+--- a/.claude/hooks/validate-agent-files.sh
++++ b/.claude/hooks/validate-agent-files.sh
+@@ -149,6 +149,24 @@ for fn in script_runners dataset_script_runners; do
+   done
+ done
+ set +f
++# Phase-04 amendment (docs/agents.md section 7c): LOCAL_MAIN_AGENT is a roster agent named in the
++# section 7c table; every local_main_out_arg class is in its module's package and named in section 7c;
++# the R7C-JVM fence table is present.
++lm_agent="$(sed -n 's/^LOCAL_MAIN_AGENT="\([^"]*\)".*/\1/p' .claude/hooks/guard-dangerous.sh 2>/dev/null)"
++if [ -n "$lm_agent" ] && in_list "$lm_agent" "$roster" && grep -q "Only \`$lm_agent\` (\`LOCAL_MAIN_AGENT\`)" docs/agents.md; then
++  pass "local main-class runs: LOCAL_MAIN_AGENT ($lm_agent) is a roster agent named in docs/agents.md section 7c"
++else fail "orphan: LOCAL_MAIN_AGENT '$lm_agent' in guard-dangerous.sh is not a roster agent named in docs/agents.md section 7c"; fi
++lm_classes="$(sed -n '/^local_main_out_arg()/,/^}/p' .claude/hooks/guard-dangerous.sh 2>/dev/null | sed -n 's/^[[:space:]]*\(edu\.[a-z0-9.]*\))[[:space:]]*echo [0-9].*/\1/p')"
++[ -n "$lm_classes" ] || fail "local main-class runs: local_main_out_arg in guard-dangerous.sh lists no class"
++for c in $lm_classes; do
++  short="${c##*.}"
++  if [[ "$c" == edu.uic.cs441.scholarchain.hadoop.* ]] && grep -qi "\`edu.uic.cs441.scholarchain.hadoop.$short\`" docs/agents.md; then
++    pass "local main-class runs: $c is in the hadoop package and in docs/agents.md section 7c"
++  else fail "orphan: local_main_out_arg class '$c' is outside edu.uic.cs441.scholarchain.hadoop or missing from docs/agents.md section 7c"; fi
++done
++grep -q '^JVM_LAUNCHERS=" java ' .claude/hooks/guard-dangerous.sh && grep -q '^jvm_seg "$cmd_nr" 0\|^(( LM_OK )) || jvm_seg "$cmd_nr" 0' .claude/hooks/guard-dangerous.sh \
++  && pass "local main-class runs: guard fences direct JVM launchers (JVM_LAUNCHERS, R7C-JVM)" \
++  || fail "local main-class runs: guard-dangerous.sh has no R7C-JVM launcher fence (docs/agents.md section 7c)"
+ [ "$fails" -eq "$fails_before_orphans" ] && pass "orphans: roster, agent files, guard ROSTER, and ownership owners agree"
+ 
+ # ---- 5. Hooks: syntax and executable bits -------------------------------------------------------
+diff --git a/.claude/agents/hadoop-engineer.md b/.claude/agents/hadoop-engineer.md
+index a7f99b7..1bc4365 100644
+--- a/.claude/agents/hadoop-engineer.md
++++ b/.claude/agents/hadoop-engineer.md
+@@ -19,7 +19,7 @@ You are the Hadoop engineer for ScholarChain. MapReduce is the first big-data st
+ 
+ 1. Read CLAUDE.md, docs/agents.md, the `modules/core` contracts, and `datasets/` samples.
+ 2. Implement or change jobs, partitioners, and counters, plus unit tests for parsers, pair generation, normalization, and key functions, and local or mini-cluster integration tests.
+-3. Verify: `sbt check`, then the local bounded run on `datasets/samples`. Record the counters and output paths.
++3. Verify: `sbt check`, then the local bounded run on `datasets/samples` in the one form docs/agents.md section 7c allows (rule R7C-MAIN): `java -cp "<classpath>" edu.uic.cs441.scholarchain.hadoop.<DblpPipelineMain|SourcePipelineMain> <arguments>`, one simple command from the repository root. Take the classpath from `sbt -batch -error "export hadoop/Compile/fullClasspath"` and write it literally. Inputs come only from `datasets/samples/`, and the output base (and any log redirect) goes only to the session scratchpad or a temp directory. The human answers the prompt for every run. Run `git status --porcelain` before and after the run and report both. Record the counters and output paths. Never launch a JVM another way (`sbt run` or `runMain`, `java @argfile`, `hadoop jar`, wrappers, variables, or copies of `java`). If the form does not fit, report the run as MANUAL ACTION REQUIRED with the exact intended command.
+ 
+ ## Boundaries and escalation
+ 
+diff --git a/.claude/agents/spark-engineer.md b/.claude/agents/spark-engineer.md
+index fc2ccbc..00067ab 100644
+--- a/.claude/agents/spark-engineer.md
++++ b/.claude/agents/spark-engineer.md
+@@ -20,7 +20,7 @@ You are the Spark engineer for ScholarChain. You turn curated MapReduce output a
+ 
+ 1. Read CLAUDE.md, docs/agents.md, the `modules/core` contracts, and the Hadoop and entity-resolution output formats.
+ 2. Implement or change the job, with known-graph tests and output-invariant checks (referential integrity, no self-loops, canonical pair order, counts consistent with the supporting works).
+-3. Verify: `sbt check`, then a local sample run. Record the stage metrics and invariant results.
++3. Verify: `sbt check`, then a local sample run. Record the stage metrics and invariant results. Direct JVM launches (`java`, `spark-submit`, `sbt run`) are blocked for you (docs/agents.md section 7c, rule R7C-JVM). Until an amendment adds a spark row to section 7c, run samples through tests inside `sbt check` and report any main-class run as MANUAL ACTION REQUIRED with the exact intended command.
+ 
+ ## Boundaries and escalation
+ 
+diff --git a/docs/agents.md b/docs/agents.md
+index 71cef49..fcce066 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -97,7 +97,7 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
+ | `build-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
+ | `domain-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `dataset-engineer` | Read, Grep, Glob, Write, Edit, Bash, WebFetch | Ownership hook; WebFetch asks the human every time; dataset scripts per section 7b (fetch scripts ask; `fetch.sh --full` blocked) |
+-| `hadoop-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
++| `hadoop-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook; the only agent that may launch a JVM directly, and only `DblpPipelineMain` or `SourcePipelineMain` in the section 7c form (guard rule R7C-MAIN; asks every time) |
+ | `entity-resolution-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `spark-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `storage-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
+@@ -112,7 +112,7 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
+ | `incident-responder` | Read, Grep, Glob, Bash, Write, Edit, `mcp__aws-api__call_aws`, aws-docs search/read | Writes only `docs/incidents/**`; may run only rollback and smoke-test scripts |
+ | `dependency-updater` | Read, Grep, Glob, Edit, Bash, WebSearch, WebFetch, GitHub releases read (2 tools) | No Write. The ownership hook lets it Edit only version values in `project/Versions.scala` (section 4, ledger value check) and blocks every other path. Bash writes are fenced by instruction and review only |
+ 
+-Two rules apply to every agent and to the orchestrator, through hooks and deny rules. Secrets are never read. AWS is never mutated directly: the guard allows only read-only AWS CLI operations, and every change goes through Terraform (human-applied) or an approved script.
++Three rules apply to every agent and to the orchestrator, through hooks and deny rules. Secrets are never read. AWS is never mutated directly: the guard allows only read-only AWS CLI operations, and every change goes through Terraform (human-applied) or an approved script. No JVM or cluster job is launched directly (`java`, `java @argfile`, `hadoop jar`, `spark-submit`, `sbt run` or `runMain`, and the rest of section 7c, rule R7C-JVM), except hadoop-engineer's checked local main-class run (section 7c, rule R7C-MAIN).
+ 
+ ## 6. Lifecycle routing
+ 
+@@ -199,6 +199,49 @@ Additional rules:
+   - RR-10 (Round 4 review F1): lexical spellings of a protected path get past R4-PROTNORM. The rule splits the command at quote characters and treats `\` as a path separator, but bash joins quoted parts into one word and drops unquoted backslashes. The rule also does not expand globs. Examples: `--out .cl'aude'/hooks/common.sh`, `--out .cl\aude/hooks/common.sh`, `--out docs/agent''-runs/...`, `SCHOLARCHAIN_DATA_DIR=docs/agent''-runs ...`, and `--out .claud?/hooks/...`. Only the permission prompt covers this: `sample-extract.sh`, `fetch.sh`, and `fetch-by-id.sh` have no allow rule, so the human is asked before every run. The human should deny any such prompt whose path arguments (`--out`, `--dest`, `--root`, `--input`, `--dois`, `--ids`, `--sources`, or a `SCHOLARCHAIN_DATA_DIR=` value) contain a quote, a backslash, or a glob character (`*`, `?`, `[`).
+   - RR-11 (phase-03 Round 3 post-apply probe rerun, probes P10, P10f, and P10h; also P10c and P10d in the same rerun): an absolute path to the live repository root gets past R4-PROTNORM when the root contains spaces and is written quoted or with backslash-escaped spaces, followed by a `.`-segment or doubled-slash spelling of a protected directory. Examples: `--out "<repo root>/.claude/./hooks/x.csv"`, `--out '<repo root>/.claude/./hooks/x.csv'`, `--out "<repo root>/.claude//hooks/x.csv"`, `--out "<repo root>/docs/./agent-runs/x.csv"`, and `--out <repo\ root>/.claude/./hooks/x.csv`, where the root here is `C:/Users/figge/OneDrive/Desktop/UIC Folder/CS 441/CS_441-Scholar_Chain`. The same rerun blocked `"<repo root>/.git/./config"` (P10g) and `"<repo root>/datasets/../.claude/hooks/x.csv"` (P10e). The cause is likely that R4-PROTNORM splits the command at whitespace, quote characters, and backslashes, so the root breaks into fragments and the last fragment (for example `441/CS_441-Scholar_Chain/.claude/./hooks/x.csv`) is resolved against the working directory instead of the root, and does not reach a protected path. The rerun did not isolate the cause. Only the permission prompt covers this: `sample-extract.sh`, `fetch.sh`, and `fetch-by-id.sh` have no allow rule, so the human is asked before every run. Extending the RR-10 rule, the human should also deny any such prompt whose path arguments are an absolute path into the repository.
+ 
++### 7c. Local main-class runs and direct JVM launches (enforced by guard-dangerous.sh section 10c, rules R7C-MAIN and R7C-JVM)
++
++Origin: phase-04 code-reviewer round 4, item 4, and human decision 2026-10-27, row 5. The hadoop-engineer role file requires a local bounded run, the guard blocks `sbt run` and `runMain`, and plain `java` was unguarded. hadoop-engineer ran `java @<argfile> <Main> ...`, and nothing checked it. This section replaces that gap with one form that the guard can check from the command text alone. There is no wrapper script (the round-1 `scripts/run-local-main.sh` proposal is withdrawn).
++
++Rule R7C-MAIN. Only `hadoop-engineer` (`LOCAL_MAIN_AGENT`) may launch a JVM directly, and only in this form, as one simple command run from the repository root:
++
++`java [-Xmx<n>[k|m|g]] [-Xms<n>[k|m|g]] -cp "<classpath>" <main-class> <arguments...> [> <file>] [2> <file>] [2>&1]`
++
++| Main class (`local_main_out_arg`) | Output base argument | Every other path argument |
++|---|---|---|
++| `edu.uic.cs441.scholarchain.hadoop.DblpPipelineMain` | argument 3 | input |
++| `edu.uic.cs441.scholarchain.hadoop.SourcePipelineMain` | argument 1 | input |
++| any other class, any other agent, the orchestrator | blocked until an amendment adds a row | |
++
++What the guard checks (mechanical, on the words bash builds: quoted parts joined, unquoted backslashes dropped):
++1. One simple command. Outside quotes there is no `;`, `|`, `&&`, `||`, `(`, `)`, `$`, backtick, `<`, `#`, `~`, `{`, `}`, `[`, `]`, `*`, `?`, or newline. Inside double quotes there is no `$` or backtick, and nowhere inside quotes is there a `>` or `&`. The only `&` allowed is in `>&1` or `>&2`. So there is no `cd`, pipe, prefix assignment (`VAR=value java`), command substitution, or second command.
++2. The command word is exactly `java` or `java.exe` on PATH. It is not a path, a variable, or a wrapper such as `env`, `timeout`, `bash -c`, or `xargs`.
++3. JVM options are only one `-cp`, `-classpath`, or `--class-path`, plus optional `-Xmx<n>` and `-Xms<n>`. No `-D`, `-jar`, `-javaagent`, `-agentlib`, `--module-path`, `-XX`, or `@argfile`.
++4. Classpath entries are split at `;`. Each one must exist, must not be a wildcard, and must be either the compiled classes directory of a module in `LOCAL_MAIN_CP_MODULES` (`core` and `hadoop`: `modules/<m>/target/scala-*/classes`, never `test-classes`) or a `.jar` file in the Coursier cache (`COURSIER_CACHE`, `%LOCALAPPDATA%/Coursier/Cache`, `~/.cache/coursier`). Both the normalized path and its realpath must match.
++5. Program arguments are positional only: no word may start with `-`. The output base argument must resolve strictly inside the scratchpad or a temp directory (`TEMP`, `TMP`, `TMPDIR`, `/tmp`), outside the repository, with no glob characters. Its nearest existing ancestor must still be inside after realpath, which covers junctions, symlinks, and 8.3 names.
++6. Every other path-like argument (one that contains `/` or `\`, starts with `.` or `file:`, has a drive letter, or contains `{ } [ ]`) is an input. It must resolve strictly inside `datasets/samples/` and exist, both normalized and after realpath. A Hadoop glob may use `{a,b}` or `[...]` only in the last component, inside quotes, and its directory must exist. `*` and `?` are never allowed, because the Windows java launcher expands them itself and shifts the positional arguments (phase-04 run report, command 3).
++7. A bare argument (snapshot ID, run ID, number) must not name an existing path in the working directory, `CLAUDE.md`, or `human-gate.md`. No argument may contain `$`, a backtick, `~`, `<`, `>`, or `&`, or be empty. Remote schemes (`s3:`, `s3a:`, `hdfs:`, `http(s):`, `abfs:`, `gs:`, `jdbc:`, any `scheme://` other than `file:`) and `file://host` are blocked. `file:///C:/...` and `file:/...` are allowed and resolved as local paths.
++8. Redirect targets resolve strictly inside the scratchpad or a temp directory, like the output base.
++9. R4-PROTNORM (section 7b, `ds_prot_hit`) also runs on the whole command.
++10. A command that passes gets `permissionDecision: ask` from the guard itself. The flag is set by the check, not by a text pattern (amendment review F4), so the human approves every run, whatever its spelling. There is no settings.json allow rule for `java`.
++11. Hook timeout. A literal Compile classpath makes the command about 2.7 KB long. On this machine, the guard took 20.6 s on such a command before this amendment and 21.4 s after it. The Bash guard hook timeout in settings.json is therefore raised from 20 s to 60 s. Nobody has checked what Claude Code does when a PreToolUse hook times out.
++
++Rule R7C-JVM, the launcher fence (every caller, the orchestrator included). Every other direct JVM or cluster launch is blocked: `java`, `javaw`, `javac`, `jdb`, `jshell`, `jrunscript`, `jjs`, `scala`, `scala3`, `scalac`, `scala-cli`, `amm`, `jbang`, `kotlin`, `kotlinc`, `groovy`, `coursier`, `cs`, `mvn`, `mvnw`, `gradle`, `gradlew`, `spark-submit`, `spark-shell`, `spark-class`, `spark-sql`, `pyspark`, `sparkR`, `hadoop`, `yarn`, `mapred`, and `hdfs` (`JVM_LAUNCHERS`).
++- Where it applies: as the command word in any path, `.exe`, `.cmd`, or `.bat` form, after `VAR=value` prefixes and shell keywords. It applies after the wrappers in `JVM_WRAP` (`env`, `timeout`, `nice`, `sudo`, `flock`, `xargs`, `cmd`, `pwsh`, `wsl`, and others), whose options and option arguments are skipped. It applies as the target of `find -exec`, and inside `bash -c`, `eval`, `env -S`, `cmd /c`, `pwsh -c`, and `su -c` strings. A launcher named as `bin/<name>` or `<name>.exe/.cmd/.bat` anywhere after a wrapper is blocked too.
++- Also blocked: a command word that is a glob (`/c/*/bin/jav?.exe`), and a variable command word that names java, jdk, jre, hadoop, spark, scala, and similar tools (`"$(which java)"`).
++- Allowed: version queries (`java -version`, `--version`, `-fullversion`, `-showversion`; `hadoop version`; `hadoop checknative [-a]`; `yarn|mapred|hdfs version`; `<launcher> --version`).
++- Quoted strings that are only arguments are not scanned (`sed -i 's/hadoop jar/X/' f`, `git log --grep='java -cp'`). A bare launcher name used as an argument is not a command (`timeout 60 grep -rn hadoop src`). Assignment words are skipped (`env HADOOP_HOME=... sbt -batch check`).
++
++The sbt run fence (guard section 6b, amendment review F1). The ratified fence split the command at quotes and never dropped backslashes, so `sbt 'hadoop/runM''ain ...'` and `sbt hadoop/ru\n` got past it. The fence now scans twice. The first pass works as before. The second pass builds the words bash builds and re-splits every quoted multi-word token the same way, which also covers `bash -c "sbt 'ru''n'"`. Both passes strip the scope at the last `/` or `:` (`test:run`, `hadoop/test:runMain`) and also block the kebab-case spellings (`run-main`, `bg-run`, `fg-run`, `console-quick`, `re-start`, and the others) and `alias`. The trigger also matches `s''bt` and `sb\t`.
++
++Not checked mechanically (residual risks; each relies on the permission prompt, the role file, and code-reviewer detection):
++- RR-12: the main class is agent-authored code. Once the JVM starts, nothing mechanical stops it from writing outside the output base, using the network, or reading files. Hadoop local mode also writes staging and temp files under `hadoop.tmp.dir` (by default `/tmp/hadoop-<user>`, which is `C:\tmp\hadoop-<user>` on native Windows). The controls are the prompt on every run, the role file's `git status --porcelain` before and after, and review of `modules/hadoop`.
++- RR-13: launches that the fence does not follow. These include inline interpreter code that builds the launch at run time (`python -c "...run(['ja'+'va', ...])"`, `node -e`), script files run by path (the RR-09 class), `make`, `coproc`, `trap`, `alias` (the RR-05 class), and a wrapper with a positional operand that is not modelled.
++- RR-14: launchers that are renamed, copied, or built at run time (`cp $(which java) /tmp/j.exe; /tmp/j.exe ...`, `J=java; $J -cp a M`, `J=ja; ${J}va`), and `@argfile` passed to them. The probe `J=java; $J -cp a M` is allowed by the patched guard (recorded in the probe results).
++- RR-15: JVM option variables (`JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS`, `CLASSPATH`) set outside the command, for example in the user's shell profile. The R7C-MAIN form forbids prefix assignments and second commands, so the variables cannot be set in the same command. The java launcher prints `Picked up JAVA_TOOL_OPTIONS` or `NOTE: Picked up JDK_JAVA_OPTIONS` when one is set, and the human should deny or investigate any run whose output shows that line. Code that runs inside sbt (tests, build definition) stays under `sbt check` and build-engineer's ownership.
++- RR-16: the Coursier cache is outside the repository and writable by Bash, so a planted `.jar` there passes check 4. This adds nothing beyond RR-12, because the main class itself is agent-authored.
++- HADOOP_HOME and winutils. Human decision 2026-10-27, row 1, sets a user-level `HADOOP_HOME=C:\hadoop` with `C:\hadoop\bin` on PATH. The run needs no prefix. If the environment lacks it, report MANUAL ACTION REQUIRED; do not add a prefix.
++
+ ## 8. Escalation policy
+ 
+ The agent prepares the escalation artifact, then stops. The human decides.
+@@ -260,6 +303,6 @@ An agent never reports a command as successful unless it observed the successful
+ ## 12. Amendment procedure
+ 
+ 1. The human or the orchestrator states the needed change. factory-engineer restates it in matrix terms: which agent, which column, which enforcement layer.
+-2. factory-engineer edits this file, the affected agent files, and the hook tables (`ROSTER`, `READ_ONLY_AGENTS`, `APPROVED_ENVIRONMENTS`, `script_runners`, `dataset_script_runners`, `sc_owner`, `LEDGER_PATH`, `LEDGER_EDITOR`) together. Then it runs `bash .claude/hooks/validate-agent-files.sh`.
++2. factory-engineer edits this file, the affected agent files, and the hook tables (`ROSTER`, `READ_ONLY_AGENTS`, `APPROVED_ENVIRONMENTS`, `script_runners`, `dataset_script_runners`, `LOCAL_MAIN_AGENT`, `local_main_out_arg`, `LOCAL_MAIN_CP_MODULES`, `JVM_LAUNCHERS`, `JVM_WRAP`, `sc_owner`, `LEDGER_PATH`, `LEDGER_EDITOR`) together. Then it runs `bash .claude/hooks/validate-agent-files.sh`.
+ 3. factory-engineer presents the full diff with audits and stops.
+ 4. The human ratifies in the phase human gate, commits, and restarts Claude Code. Until then, the previous ratified configuration governs.
+diff --git a/.claude/settings.json b/.claude/settings.json
+index 6edfa5d..ff95a32 100644
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ -254,7 +254,7 @@
+       {
+         "matcher": "Bash",
+         "hooks": [
+-          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so commands cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
++          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so commands cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 60 }
+         ]
+       },
+       {

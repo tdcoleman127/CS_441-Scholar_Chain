@@ -79,6 +79,18 @@ object IdFormat:
   private val PmidPattern  = """^[1-9]\d*$""".r
   private val OciPattern   = """^\d+-\d+$""".r
 
+  /**
+   * DOI resolver prefixes stripped by [[normalizeSourceId]], compared after lowercasing: every
+   * combination of `http`/`https` and `doi.org`/`dx.doi.org`, plus `doi:`. At most one is stripped.
+   */
+  val DoiResolverPrefixes: Seq[String] = Seq(
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+    "doi:"
+  )
+
   /** Institution-ID namespaces that count as resolved (the only ones allowed at runtime). */
   val ResolvedInstitutionNamespaces: Set[IdNamespace] = Set(IdNamespace.Ror, IdNamespace.OpenAlex)
 
@@ -132,8 +144,9 @@ object IdFormat:
 
   /**
    * Normalizes an authoritative source ID for its namespace, or explains why it is unusable.
-   *   - doi: strip `https://doi.org/`, `http://doi.org/`, `https://dx.doi.org/`, `doi:`; lowercase;
-   *     must start with `10.` and contain `/`.
+   *   - doi: lowercase, then strip one resolver prefix from [[DoiResolverPrefixes]] (`http` or
+   *     `https`, `doi.org` or `dx.doi.org`, or `doi:`; scheme and host match case-insensitively);
+   *     the remaining body must start with `10.` and contain `/`.
    *   - arxiv: strip a leading `arXiv:` (any case). Version suffixes are kept.
    *   - openalex: strip `https://openalex.org/`; must be a letter followed by digits (`W123`).
    *   - issn: uppercase; must be `NNNN-NNNC`.
@@ -156,9 +169,7 @@ object IdFormat:
       case IdNamespace.Doi =>
         val lower    = trimmed.toLowerCase(java.util.Locale.ROOT)
         val stripped =
-          Seq("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "doi:")
-            .find(lower.startsWith)
-            .fold(lower)(p => lower.drop(p.length))
+          DoiResolverPrefixes.find(lower.startsWith).fold(lower)(p => lower.drop(p.length))
         if stripped.startsWith("10.") && stripped.contains("/") then Right(stripped)
         else Left(s"'$raw' is not a DOI")
       case IdNamespace.Arxiv =>

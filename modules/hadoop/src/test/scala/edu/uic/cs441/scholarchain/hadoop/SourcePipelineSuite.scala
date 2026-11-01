@@ -230,6 +230,25 @@ class SourcePipelineSuite extends munit.FunSuite:
       assertEquals(lines(j7.output, "pairs").size, lines(j6.output, "pairs").size)
       assertEquals(lines(j7.output, "candidates").size, cands.size)
       assert(partFiles(j7.output, "works").forall(_.matches("part-r-0000[0-2]")))
+      // Closeout, round-2 MINOR 1: Job 7 must use ExportPartitioner. Without
+      // `job.setPartitionerClass(classOf[ExportPartitioner])` the job falls back to
+      // WorkIdPartitioner over the whole composite key (`<entity>\t<key>\t<line>`), so one work's
+      // records scatter across part numbers. Every exported record must sit in the part file
+      // numbered WorkIdPartitioner.partition(partitionKey, 3), and each work ID's works, mentions,
+      // and workextras records must share one part number.
+      val placed =
+        for
+          e <- Export.Entities; f <- partFiles(j7.output, e)
+          l <- lines(j7.output, s"$e/$f")
+        yield (e, Export.partitionKey(l), f.stripPrefix("part-r-").toInt)
+      assertEquals(placed.size.toLong, c7("EXPORTED"))
+      val misplaced = placed.filter((_, k, p) => p != WorkIdPartitioner.partition(k, 3))
+      assert(misplaced.isEmpty, misplaced.take(5))
+      val byWork = placed.filter((e, _, _) => Set("works", "mentions", "workextras")(e))
+        .groupBy(_._2).view.mapValues(_.map(_._3).distinct).toMap
+      assert(byWork.size >= 7, byWork.keys)
+      assert(byWork.forall(_._2.size == 1), byWork.filter(_._2.size > 1))
+      assert(placed.map(_._3).distinct.size > 1, "all records in one partition proves nothing")
       assert(j7.output.toString.contains("run=run-v1-") &&
         j7.output.toString.contains("snapshot=sample/graph-export"))
       rs.foreach(r => println(s"PARTB ${DblpPipelineMain.report(r)}"))

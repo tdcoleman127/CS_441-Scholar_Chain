@@ -45,16 +45,48 @@ object DblpXmlInputFormat:
     if exact != null then exact
     else factory.getCodec(new Path(file.getName.toLowerCase(java.util.Locale.ROOT)))
 
-/** Pure scanner over a stream positioned at `start`; shared by the reader and its unit tests. */
+/**
+ * Pure scanner over a stream positioned at `start`; shared by the DBLP reader, the arXiv reader
+ * ([[ArxivRecordReader]]), and their unit tests.
+ *
+ * A record ends at its matching close tag. If a top-level record start tag (one of `types`, for
+ * example `<inproceedings `) appears before that close tag, the open record is broken (unclosed or
+ * closed with the wrong tag): it ends just before that start tag and is emitted as is, so the
+ * parser rejects it as `xml-not-well-formed` under its own key, and the next record is read
+ * normally. This keeps one record per start tag, so a broken record never swallows the well-formed
+ * records after it, and no record is read by two splits (the reader that owns the broken record
+ * stops where the next record begins). A record still open at end of input is emitted with
+ * [[DblpXmlInputFormat.TruncatedMarker]].
+ */
 final class DblpRecordScanner(in: InputStream, start: Long, end: Long, types: Set[String]):
   private val stream  = new BufferedInputStream(in, 1 << 16)
   private var pos     = start
   private val maxName = types.map(_.length).max
+  // One byte of pushback: the '<' of a record start tag that ended the previous (broken) record.
+  private var pushback = -1
 
   private def read(): Int =
-    val b = stream.read()
+    val b =
+      if pushback >= 0 then
+        val p = pushback; pushback = -1; p
+      else stream.read()
     if b >= 0 then pos += 1
     b
+
+  /**
+   * After a '<' has been read: the record type whose start tag follows, if any. Does not consume
+   * input (mark and reset on the underlying stream; pushback is always empty here).
+   */
+  private def peekStartTag(): Option[String] =
+    stream.mark(maxName + 2)
+    val sb = new StringBuilder
+    var c  = stream.read()
+    while c >= 0 && sb.length <= maxName && Character.isLetter(c) do
+      sb.append(c.toChar); c = stream.read()
+    stream.reset()
+    val name = sb.toString
+    if types(name) && (c == ' ' || c == '>' || c == '\t' || c == '\n' || c == '\r') then Some(name)
+    else None
 
   /** Next (offset, recordText) whose start tag begins before `end`, or None. */
   def next(): Option[(Long, String)] =
@@ -67,15 +99,7 @@ final class DblpRecordScanner(in: InputStream, start: Long, end: Long, types: Se
         if b < 0 then done = true
         else if b == '<' then
           val tagStart = pos - 1
-          stream.mark(maxName + 2)
-          val sb = new StringBuilder
-          var c  = stream.read()
-          while c >= 0 && sb.length <= maxName && Character.isLetter(c) do
-            sb.append(c.toChar); c = stream.read()
-          stream.reset()
-          val name = sb.toString
-          if types(name) && (c == ' ' || c == '>' || c == '\t' || c == '\n' || c == '\r') then
-            found = Some(tagStart -> readRecord(name))
+          peekStartTag().foreach(name => found = Some(tagStart -> readRecord(name)))
     found
 
   private def readRecord(name: String): String =
@@ -83,13 +107,18 @@ final class DblpRecordScanner(in: InputStream, start: Long, end: Long, types: Se
     val buf   = new java.io.ByteArrayOutputStream()
     buf.write('<')
     var matched = 0
+    var broken  = false
     var b       = 0
-    while matched < close.length && { b = read(); b >= 0 } do
-      buf.write(b)
-      matched =
-        if b == close(matched) then matched + 1 else if b == close(0) then 1 else 0
+    while !broken && matched < close.length && { b = read(); b >= 0 } do
+      if b == '<' && peekStartTag().isDefined then
+        // Next top-level record begins: end this broken record before its '<'.
+        pushback = b; pos -= 1; broken = true
+      else
+        buf.write(b)
+        matched =
+          if b == close(matched) then matched + 1 else if b == close(0) then 1 else 0
     val text = new String(buf.toByteArray, StandardCharsets.ISO_8859_1)
-    if matched == close.length then text else DblpXmlInputFormat.TruncatedMarker + text
+    if matched == close.length || broken then text else DblpXmlInputFormat.TruncatedMarker + text
 
   def position: Long = pos
   def close(): Unit  = stream.close()

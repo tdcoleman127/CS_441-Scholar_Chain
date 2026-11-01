@@ -14,7 +14,8 @@ Written by the orchestrator. Updated at the end of the 2026-10-29 session. Read 
 - Same session, later: the human accepted the 11 hadoop-local record types and asked for the blocking review and a quick repair (`human-decisions-2026-10-29.md`).
   - hadoop-engineer repair 1 fixed F1 to F5 (`hadoop-engineer-partb-repair1-report.md`). `sbt check` exit 0 at 11:49:28 PM: core 143/143, hadoop 50/50 (`run-evidence/partb-repair1-check.log`).
   - **code-reviewer part B round 2: APPROVE**, with 2 non-blocking MINOR findings (`code-reviewer-report-partb-round2.md`): no test covers Job 7's partitioner wiring; the repair report overstated one test (annotated).
-  - The entity-resolution review (`entity-resolution-engineer-review-partb.md`) has 3 HIGH recall findings (chunking splits blocks by source, a suffix becomes the surname, name order) plus E-F11: ownership of the blocking keys and features is ambiguous, so it needs a factory-engineer amendment and human ratification. Open human decisions: E-F11 option a or b; whether to fix E-F1 to E-F3 and E-F6 before the part B gate or record them as known risks.
+  - The entity-resolution review (`entity-resolution-engineer-review-partb.md`) has 3 HIGH recall findings (chunking splits blocks by source, a suffix becomes the surname, name order) plus E-F11: ownership of the blocking keys and features is ambiguous, so it needs a factory-engineer amendment and human ratification. Decided 2026-10-30 (`human-decisions-2026-10-29.md`, rows 4 and 5): E-F11 option b (entity-resolution-engineer writes a versioned spec, hadoop implements it, entity-resolution signs off; no constitutional change), and E-F1 to E-F10 are recorded as known risks, not fixed in phase 04.
+- Remaining for phase 04: the human writes the part B gate and commits. Not yet decided (do now or defer): the infra-engineer EMR smoke-run script, the main-class amendment and Part B main class, test-engineer adversarial tests, and review round 2's minor finding 1.
 - Nothing from part B is committed. Untracked or modified: `Jobs.scala` and 6 new files under `modules/hadoop`, plus the part B files in this folder and `run-evidence/partb-*.log` (gitignored; use `git add -f`).
 
 ### Next steps for part B, in order
@@ -25,6 +26,29 @@ Written by the orchestrator. Updated at the end of the 2026-10-29 session. Read 
    - Accept or reject the 11 hadoop-local record types (report RISKS 1). If they are promoted to core, domain-engineer does it.
    - Whether entity-resolution-engineer reviews the block keys, the feature list, and chunking (680 of 861 pairs skipped in the largest sample block).
 4. test-engineer adversarial tests (parts A and B), then the human gate for part B, then the commit.
+
+## Closeout status (2026-11-01 session)
+
+Work order: `closeout-work-order.md`.
+
+- **Done and code-reviewed (APPROVE):**
+  - hadoop-engineer added `SourcePipelineMain` and the Job 7 partitioner test (`hadoop-engineer-closeout-report.md`).
+  - infra-engineer wrote `scripts/run-bounded-pipeline.sh`; `bash -n` passes, it was not executed, and it is not runnable until Terraform exists (`infra-engineer-closeout-report.md`).
+  - Review: `code-reviewer-report-closeout.md`, APPROVE with 3 MINOR.
+- **test-engineer adversarial suites (35 tests):** found 3 real defects (`test-engineer-closeout-report.md`). All are fixed:
+  - DBLP scanner swallowing records, and Cf characters in names: hadoop-engineer (`hadoop-engineer-closeout-repair-report.md`).
+  - The `http://dx.doi.org/` DOI prefix: domain-engineer (`domain-engineer-closeout-report.md`).
+  - Review: `code-reviewer-report-closeout-round2.md`, APPROVE with 2 MINOR.
+- **Last `sbt check`** (orchestrator, 3:42:20 PM, `run-evidence/closeout-orch-check2.log`): exit 0; core 145/145, hadoop 66/66, contractTests 35/35.
+- **factory-engineer main-class amendment, round 2:** `factory-engineer-amendment-r2-report.md`; patch preserved at `run-evidence/amendment-r2.patch`. code-reviewer returned REQUEST_CHANGES (`code-reviewer-report-amendment-round2.md`): N1 and N2 MAJOR are launcher and sbt fence bypasses; N3 to N5 MINOR.
+  - **Deferred by the human (2026-11-01, decision 6).** Not ratified; the live constitution is unchanged. Next: factory-engineer round 3 in a later phase, starting from the round-2 patch and review. Also verify Claude Code's behavior on a hook timeout.
+- **Final `sbt check`** (orchestrator, 4:17:33 PM, `run-evidence/closeout-orch-check3.log`): exit 0; core 145/145, hadoop 66/66, contractTests 35/35.
+- **Phase 04 is complete pending the human's Part C gate and commit.** Phase 05 starts in a fresh session.
+- **Open MINOR items (non-blocking):**
+  - outputBase rejection branch untested;
+  - duplicate-input check matches identical strings only;
+  - XXE test temp directory not cleaned up.
+- **Nothing committed.** The new untracked paths include `scripts/`, `tests/contracts/.../hadoop/`, `modules/hadoop/...`, and the closeout reports.
 
 ## Part A status (2026-10-27 session; accepted since)
 

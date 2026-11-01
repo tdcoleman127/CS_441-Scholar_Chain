@@ -120,6 +120,41 @@ class StableIdsSuite extends munit.FunSuite:
     )
   }
 
+  test("every DOI resolver prefix variant normalizes to the same DOI (any scheme/host case)") {
+    val variants = Seq(
+      "https://doi.org/10.1000/ABC",
+      "http://doi.org/10.1000/ABC",
+      "https://dx.doi.org/10.1000/ABC",
+      "http://dx.doi.org/10.1000/ABC",
+      "HTTP://DX.DOI.ORG/10.1000/ABC",
+      "Https://Dx.Doi.Org/10.1000/ABC",
+      "HTTPS://DOI.ORG/10.1000/ABC",
+      "doi:10.1000/ABC",
+      "DOI:10.1000/ABC",
+      " http://dx.doi.org/10.1000/ABC ",
+      "10.1000/ABC"
+    )
+    variants.foreach { raw =>
+      assertEquals(IdFormat.normalizeSourceId(IdNamespace.Doi, raw), Right("10.1000/abc"), raw)
+      assertEquals(right(StableIds.workId(IdNamespace.Doi, raw)), "work:doi:10.1000/abc", raw)
+    }
+  }
+
+  test("DOI prefix stripping does not loosen validation of the DOI body") {
+    val bad = Seq(
+      "http://dx.doi.org/",
+      "http://dx.doi.org/11.1000/abc",
+      "http://dx.doi.org/10.1000",
+      "http://dx.doi.org/10.1000/a b",
+      "http://dx.doi.org/http://doi.org/10.1000/abc",
+      "doi:doi:10.1000/abc",
+      "http://www.dx.doi.org/10.1000/abc",
+      "ftp://dx.doi.org/10.1000/abc",
+      "http:/dx.doi.org/10.1000/abc"
+    )
+    bad.foreach(raw => assert(IdFormat.normalizeSourceId(IdNamespace.Doi, raw).isLeft, raw))
+  }
+
   test("work ID rejects unusable source IDs and namespaces the kind does not allow") {
     assert(StableIds.workId(IdNamespace.Doi, "not-a-doi").isLeft)
     assert(StableIds.workId(IdNamespace.Dblp, "has space").isLeft)

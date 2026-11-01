@@ -78,11 +78,15 @@ object DblpRecordParser:
           )
       ))
 
-  /** Name normalization for blocking: NFKD, strip marks, lowercase, collapse spaces. */
+  /**
+   * Name normalization for blocking: NFKD, strip marks and invisible format characters, lowercase,
+   * collapse spaces. Format characters (category Cf: soft hyphen U+00AD, zero-width space U+200B,
+   * BOM, ...) are removed, not turned into spaces, so "Mül­ler" stays one token ("muller").
+   */
   def normalizeName(raw: String): String =
     Normalizer
       .normalize(raw, Normalizer.Form.NFKD)
-      .replaceAll("\\p{M}+", "")
+      .replaceAll("[\\p{M}\\p{Cf}]+", "")
       .toLowerCase(java.util.Locale.ROOT)
       .replaceAll("[^\\p{L}\\p{N} ]+", " ")
       .trim
