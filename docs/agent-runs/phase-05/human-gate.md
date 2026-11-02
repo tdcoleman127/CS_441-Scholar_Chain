@@ -27,4 +27,4 @@ Decision: ACCEPTED WITH OPEN RISKS
 - Open: R-05-6, MINOR, ReviewItem lacks the ER run ID; policy file named er-policy-v1.conf holds er-policy-v2; entity-resolution-engineer, next ER change
 Deferred scope: see WO-05 "Deferred" list
 Manual changes: none
-Accepted commit: <40-character hash>
+Accepted commit: 8e51f5306de84c513a0373f28de42fd72074ec8a
