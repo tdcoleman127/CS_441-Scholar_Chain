@@ -55,6 +55,13 @@ object Versions {
   val logback = "1.5.38"
   // The single test framework for the whole codebase (built with Scala 3.3.8).
   val munit = "1.3.6"
+  // AWS SDK for Java v2: one shared value for every software.amazon.awssdk artifact (s3, dynamodb,
+  // s3vectors, bedrockruntime, url-connection-client), because the SDK releases all modules in
+  // lockstep and mixing versions is unsupported. Pure Java, so no Scala binary dependency. sbt 1.x
+  // does not import Maven BOMs, so this entry stands in for the SDK BOM. Observed as the current
+  // release of the bom, s3, dynamodb, s3vectors, and bedrockruntime artifacts on Maven Central
+  // (maven-metadata.xml, 2026-11-01) and verified by sbt resolution (WO-00).
+  val awsSdk = "2.57.8"
 
   // ---- Container image ------------------------------------------------------------------------
   // Amazon Corretto 17 on Amazon Linux 2023, headless JRE, matching EMR 7.x's default Java.

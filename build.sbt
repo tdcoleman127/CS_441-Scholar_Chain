@@ -60,6 +60,37 @@ val sparkPlatform = Seq(
   ("org.apache.spark" %% "spark-sql" % Versions.spark).cross(CrossVersion.for3Use2_13)
 )
 
+// AWS SDK for Java v2 (pure Java, one shared ledger value, Compile scope: the services image needs
+// these at runtime and EMR does not supply them to that image). Each service artifact inherits two
+// HTTP client implementations at runtime scope from the SDK's `services` parent POM (2.57.8:
+// apache5-client with httpclient5, and netty-nio-client with Netty; older SDK lines inherited
+// apache-client instead of apache5-client). All three are excluded and the single synchronous
+// url-connection-client (JDK HttpURLConnection, no further transitive dependencies) is declared
+// instead, so exactly one implementation is on the classpath and the SDK selects it without
+// configuration. Async clients (for example Bedrock streaming) would need netty-nio-client; add
+// it only on request.
+def awsSdkModule(artifact: String): ModuleID =
+  ("software.amazon.awssdk" % artifact % Versions.awsSdk)
+    .exclude("software.amazon.awssdk", "apache5-client")
+    .exclude("software.amazon.awssdk", "apache-client")
+    .exclude("software.amazon.awssdk", "netty-nio-client")
+val awsHttpClient = awsSdkModule("url-connection-client")
+
+// storage (WO-00): object storage, key-value tables with conditional writes, and vector storage.
+// Neptune needs no client here: the fast-track bulk-load path writes CSV files and manifests to S3
+// (the S3 client) and openCypher templates are plain strings. A Neptune data-plane client
+// (neptunedata) is added only when storage-engineer requests live query execution.
+val awsStorageClients = Seq(
+  awsSdkModule("s3"),
+  awsSdkModule("dynamodb"),
+  awsSdkModule("s3vectors"),
+  awsHttpClient
+)
+
+// rag (WO-00): the model client for embeddings and synthesis (Bedrock Runtime, synchronous
+// InvokeModel/Converse). Declared only in rag. services reaches it only through dependsOn(rag).
+val awsModelClient = awsSdkModule("bedrockruntime")
+
 // Logging: API at compile scope, exactly one implementation at Runtime scope (services only).
 // Job jars carry no logging implementation; EMR supplies its own.
 val slf4jApi       = "org.slf4j"      % "slf4j-api"       % Versions.slf4j
@@ -153,21 +184,23 @@ lazy val sparkAnalytics = (project in file("modules/spark"))
     libraryDependencies ++= (sparkPlatform ++ hadoopPlatform).map(_ % Provided)
   )
 
-// storage: core plus AWS SDK and store clients (added on storage-engineer's request).
+// storage: core plus AWS SDK store clients (S3, DynamoDB, S3 Vectors) and one SDK HTTP client.
 lazy val storage = (project in file("modules/storage"))
   .dependsOn(core)
   .settings(
     commonSettings,
-    name := "scholarchain-storage"
+    name := "scholarchain-storage",
+    libraryDependencies ++= awsStorageClients
   )
 
-// rag: core and storage ports plus a model client (added on rag-engineer's request).
-// No HTTP server library.
+// rag: core and storage ports plus the model client (Bedrock Runtime). No HTTP server library;
+// the SDK HTTP client it inherits from storage is a client, not a server.
 lazy val rag = (project in file("modules/rag"))
   .dependsOn(core, storage)
   .settings(
     commonSettings,
-    name := "scholarchain-rag"
+    name := "scholarchain-rag",
+    libraryDependencies += awsModelClient
   )
 
 // services: core, storage, rag plus an HTTP server library (added on service-engineer's
