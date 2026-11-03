@@ -23,4 +23,4 @@ Decision: ACCEPTED WITH OPEN RISKS
 - Open: R-06a-16, MINOR, no sample-data run: no Hadoop or ER outputs exist in the repo, so only the unit fixture was run; spark-engineer / deploy-engineer, batched AWS run
 Deferred scope: see WO-06a "Deferred" list (WO-06b section)
 Manual changes: none
-Accepted commit: <40-character hash>
+Accepted commit: ab8c7696aeaa9b4d9fd21a55c1819476f902f459
