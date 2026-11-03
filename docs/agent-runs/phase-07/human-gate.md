@@ -21,4 +21,4 @@ Decision: ACCEPTED WITH OPEN RISKS
 - Open: R-07-14, MINOR, process: agent worktree sessions cannot write, because guard-ownership resolves paths against the main tree and .claude/worktrees/* has no owner; fast-track Session B runs sequentially in the main tree until factory-engineer proposes an amendment and the human ratifies it
 Deferred scope: see WO-07 "Deferred" list
 Manual changes: none
-Accepted commit: <40-character hash>
+Accepted commit: abdff534db31834d5407f626ab0a24076a1a86a9
