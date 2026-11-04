@@ -1,44 +1,24 @@
-## Round N: <short title, e.g. "repair-02: read-only fence brace/glob fix"> (YYYY-MM-DD)
+## Round 1: fast track (2026-11-03) — WO-09 runtime Graph-RAG
 
-Work order: docs/agent-runs/phase-NN/<prompt file>
-Agents run: <owner agent(s)>, then code-reviewer, then test-engineer (if any)
-Snapshot reviewed: <patch, checkpoint, or diff range, e.g. repair-02-wip-cp04.patch or main..HEAD>
-
-Reviewed:
-- Files or diff: <paths>
-- Reports: <report file names under docs/agent-runs/phase-NN/>
-- Reviewer verdict: APPROVE | REQUEST_CHANGES (<report file>)
-- Checks run and results (observed output only):
-  - bash .claude/hooks/validate-agent-files.sh: <PASS/FAIL, counts>
-  - bash -n <scripts>: <result>
-  - sbt check: <PASS/FAIL, tests passed/failed>
-  - Probes or other checks: <IDs and results, including negative results>
-
-Decision: ACCEPTED | ACCEPTED WITH OPEN RISKS | REJECTED
-Reasons:
-- <why this decision>
-Findings status:
-- Closed: <IDs>
-- Partially closed (documented): <IDs, where documented>
-- Open: <IDs>
-
-Approvals (only if they apply):
-- Environment: <dev>
-- Terraform plan checksum: <sha256>
-- Cost bound: <$ amount / duration>
-- Other exact values: <e.g. size bound, EMR capacity>
-
-Manual changes:
-- <change made by hand>, <exact command>, <why>
-- (none) if there were none
-
-Remaining risk:
-- <ID> <CRITICAL|MAJOR|MINOR>: <one-line description>. Owner: <agent>. Fixed in: <phase/repair>. Interim mitigation: <if any>
-
-Ratification statement (constitutional changes only):
-I ratify the changes to <files> as of snapshot <name>, accepting the deviations and
-remaining risks above, with <IDs> to be fixed in <phase/repair> before <next work>.
-
-Next step: <next round, next phase, or restart required: yes/no>
-
-Accepted commit: <40-character hash>  (filled in by the follow-up commit)
+Work order: docs/agent-runs/fast-track-phases-05-09.md, WO-09
+Reviewed: untracked modules/rag/src/** (9 runtime files, 4 test files) and prompts/answer-synthesis/v1/** vs 1c15917; sbt check PASS (ER 19, storage 59 passed/2 skipped, core 160, rag 58, hadoop 66, spark 9, contractTests 35; 0 failed; observed by orchestrator); reviewer REQUEST_CHANGES (F1 MAJOR), repair-01, re-review APPROVE
+Decision: ACCEPTED WITH OPEN RISKS
+- Deviation from fast track: human chose to repair one MAJOR finding (plan repairs CRITICAL only); temporal two-window comparison cut for time
+- Fixed in session: F1 (temporal-window pair check read A's coauthor list capped at 100 and abstained with "no edge" when the pair had collaborated; now confirms the edge with a depth-1 bounded path independent of degree, reads attributes only from rows both templates agree on, and returns coauthor-list-truncated or edge-attributes-unavailable gaps instead of a negative; PairConfirmationSuite with a 101-coauthor fixture, 5 of 6 tests failed against the old code)
+- Built: rule-based QueryPlanner (closed allowlist: direct-coauthors, shortest-path, metric-lookup, metric-ranking, component, community, bridges, temporal-window; typed refusals; user text never reaches a query), ResearcherResolver (canonical-researcher export via ObjectStore, exact then initials match, ambiguity returns all candidates, none abstains), retrieval over storage constant templates with clamped limits and timeouts, bounded EvidenceBundle (60 graph items, 24000 characters, semantic context separate and never support), TemplateSynthesizer with typed claims, deterministic ClaimVerifier (V1-V6), audit record. Benchmark B01-B19 all as expected, including ambiguous name, unknown name, unavailable metric, unsupported claims, and prompt injection; template claims 10 of 10 verified
+- Open: R-09-1, MINOR, rag-local PlanOperation, Verdict, typed claims, AuditRecord, and export row types should move to core (core QueryOperation lacks component, ranking, temporal); domain-engineer, next core change
+- Open: R-09-2, MINOR, no storage port for metrics, communities, bridges, components, or name lookup; rag loads whole export objects from the object store at a rag-chosen key layout (16 MiB / 200k-row bound checked only after download, so a large export can exhaust memory first); storage-engineer, before batched AWS run
+- Open: R-09-3, MINOR, coauthor rows carry no edge window, policy, or provenance, so edge facts are stamped with the configured policy and release run ID the runtime never observed (law 3); edges from an older release in Neptune would be mislabeled; storage-engineer / rag-engineer, before batched AWS run
+- Open: R-09-4, MINOR, path rows carry no hop attributes; hops re-read with a 100-coauthor limit and degrade to partial support; no storage pair-edge template, so pairs where both sides exceed 100 coauthors abstain with coauthor-list-truncated; storage-engineer, next storage change
+- Open: R-09-5, MINOR, audit record is returned, not persisted (QuerySessionTable has no audit fields); storage-engineer / service-engineer, services phase
+- Open: R-09-6, MINOR, resolver prefers exact over initials matches, which can hide an initials-level ambiguity; ranking ties at the cut-off are broken by researcher ID without disclosure; rag-engineer, next rag change
+- Open: R-09-7, MINOR, planner covers English templates only (fail closed); rag-engineer, LLM planning phase
+- Open: R-09-8, MINOR, aws-docs MCP did not connect; nothing Bedrock or S3 Vectors related verified against AWS documentation; rag-engineer, before real-model benchmark
+- Open: R-09-9, MINOR, prompts/answer-synthesis/v1 schema is loose and unused; rag-engineer, LLM synthesis phase
+- Open: R-09-10, MINOR, real Neptune path templates order only by length with no tie-break under LIMIT, so path answers and hashes can change between runs; the fake hides this; storage-engineer, with the live executor
+- Open: R-09-11, MINOR, a non-template synthesizer citing a semantic ID alongside a matching graph edge keeps the semantic ID on a verified claim; core ResearcherMetrics and CanonicalResearcher export rows are not checked against the release run ID; rag-engineer, before LLM synthesis
+- Open: R-09-12, MINOR, with parallel edges and both coauthor lists capped, partially read edges yield a supported answer that silently omits unread confirmed edges; more than 20 parallel edges per pair are only partly confirmed; rag-engineer, next rag change
+- Open: R-09-13, MINOR, live Neptune execution of every template is untested (no data-plane client); storage-engineer / deploy-engineer, batched AWS run
+Deferred scope: see WO-09 "Deferred" list, plus temporal two-window comparison
+Manual changes: none
+Accepted commit: b9e0c699d28e31e766f0b7b120d31f2bd320a589
