@@ -5,6 +5,7 @@ import scala.jdk.CollectionConverters.*
 import software.amazon.awssdk.core.document.Document
 import software.amazon.awssdk.services.s3vectors.S3VectorsClient
 import software.amazon.awssdk.services.s3vectors.model.{
+  GetVectorsRequest,
   PutInputVector,
   PutVectorsRequest,
   QueryVectorsRequest,
@@ -97,6 +98,26 @@ final class S3VectorsStore(client: S3VectorsClient, vectorBucket: String, indexP
             )
         )
       catch case e: Exception => Left(AwsErrors.classify("s3vectors:QueryVectors", e))
+    }
+
+  def getMetadata(
+      index: VectorIndex,
+      keys: Seq[String]
+  ): Either[StorageError, Map[String, Map[String, MetaValue]]] =
+    VectorStore.checkGet(keys).flatMap { _ =>
+      try
+        val resp = client.getVectors(
+          GetVectorsRequest
+            .builder()
+            .vectorBucketName(vectorBucket)
+            .indexName(index.physicalName(indexPrefix))
+            .keys(keys.asJava)
+            .returnMetadata(true)
+            .returnData(false)
+            .build()
+        )
+        Right(resp.vectors().asScala.toList.map(v => v.key() -> fromDocument(v.metadata())).toMap)
+      catch case e: Exception => Left(AwsErrors.classify("s3vectors:GetVectors", e))
     }
 
   private def toValue(v: MetaValue): Document = v match

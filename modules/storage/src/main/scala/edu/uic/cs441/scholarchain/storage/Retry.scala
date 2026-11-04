@@ -43,11 +43,25 @@ object Retry:
       sleeper: Sleeper = Sleeper.Real,
       jitter: Long => Long = c => if c <= 0 then 0L else scala.util.Random.nextLong(c + 1)
   )(op: => Either[StorageError, A]): Either[StorageError, A] =
+    runCounted(policy, sleeper, jitter)(op).result
+
+  /**
+   * Same policy as [[run]], and also reports how many attempts ran (1..`policy.maxAttempts`), so
+   * loaders can record retry counts in the RunLedger.
+   */
+  def runCounted[A](
+      policy: RetryPolicy,
+      sleeper: Sleeper = Sleeper.Real,
+      jitter: Long => Long = c => if c <= 0 then 0L else scala.util.Random.nextLong(c + 1)
+  )(op: => Either[StorageError, A]): Attempted[A] =
     @tailrec
-    def loop(attempt: Int): Either[StorageError, A] =
+    def loop(attempt: Int): Attempted[A] =
       op match
         case Left(err) if err.retryable && attempt < policy.maxAttempts =>
           sleeper.sleep(jitter(policy.backoffCeiling(attempt)))
           loop(attempt + 1)
-        case other => other
+        case other => Attempted(other, attempt)
     loop(1)
+
+/** A retried result with the number of attempts that ran. */
+final case class Attempted[A](result: Either[StorageError, A], attempts: Int)

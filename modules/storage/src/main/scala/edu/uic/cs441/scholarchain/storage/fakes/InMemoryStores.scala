@@ -118,6 +118,19 @@ final class InMemoryVectorStore extends VectorStore with FailureInjection:
     }
   }
 
+  def getMetadata(
+      index: VectorIndex,
+      keys: Seq[String]
+  ): Either[StorageError, Map[String, Map[String, MetaValue]]] = guarded {
+    VectorStore.checkGet(keys).map { _ =>
+      getCalls += 1
+      val idx = indexes.getOrElse(index, mutable.Map.empty)
+      keys.flatMap(k => idx.get(k).map(v => k -> v.metadata)).toMap
+    }
+  }
+
+  var getCalls: Int = 0
+
   def count(index: VectorIndex): Int = synchronized(indexes.get(index).fold(0)(_.size))
 
   def stored(index: VectorIndex, key: String): Option[VectorRecord] =

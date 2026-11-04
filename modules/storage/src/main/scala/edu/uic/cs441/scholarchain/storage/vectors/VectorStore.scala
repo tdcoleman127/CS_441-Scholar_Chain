@@ -151,10 +151,30 @@ trait VectorStore:
       filter: Map[String, MetaValue]
   ): Either[StorageError, List[VectorHit]]
 
+  /**
+   * Stored metadata of the given keys (GetVectors with metadata, without data). Keys that are not
+   * stored are absent from the result. At most [[VectorStore.MaxGetKeys]] keys per call. A read, so
+   * safe to retry.
+   */
+  def getMetadata(
+      index: VectorIndex,
+      keys: Seq[String]
+  ): Either[StorageError, Map[String, Map[String, MetaValue]]]
+
 object VectorStore:
   /** Upper bound on vectors in one PutVectors call accepted by this layer. */
   val MaxBatchSize: Int = 500
   val MaxTopK: Int      = 30
+
+  /** Upper bound on keys in one GetVectors call accepted by this layer. */
+  val MaxGetKeys: Int = 100
+
+  def checkGet(keys: Seq[String]): Either[StorageError, Unit] =
+    if keys.isEmpty || keys.size > MaxGetKeys then
+      Left(StorageError.InvalidInput("keys", s"must hold 1..$MaxGetKeys keys"))
+    else if keys.distinct.size != keys.size then
+      Left(StorageError.InvalidInput("keys", "duplicate keys in one lookup"))
+    else Right(())
 
   def checkQuery(
       vector: Vector[Float],

@@ -165,6 +165,13 @@ final class RunLedgerTable(store: KeyValueStore, policy: RetryPolicy = RetryPoli
       items <- Retry.run(policy)(store.queryPartition(Table.RunLedger, pk, limit))
     yield items.filter(_.sk.startsWith("REJECT#")).map(i => read[RejectRecord](i.payload))
 
+  /** STEP items of a run (at most `limit` ledger items are read), in sort-key order. */
+  def steps(runId: String, limit: Int): Either[StorageError, List[RunStepPayload]] =
+    for
+      pk    <- Keys.run(runId)
+      items <- Retry.run(policy)(store.queryPartition(Table.RunLedger, pk, limit))
+    yield items.filter(_.sk.startsWith("STEP#")).map(i => read[RunStepPayload](i.payload))
+
 final class EntityLinkCacheTable(store: KeyValueStore, policy: RetryPolicy = RetryPolicy.Default):
 
   def put(decision: MatchDecision): Either[StorageError, WriteOutcome] =
