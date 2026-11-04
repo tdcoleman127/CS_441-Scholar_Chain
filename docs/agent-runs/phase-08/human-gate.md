@@ -22,3 +22,24 @@ Decision: ACCEPTED WITH OPEN RISKS
 Deferred scope: see WO-08 "Deferred" list (chunking, bounded AWS ingestion of 10,000 vectors, throughput and latency)
 Manual changes: none
 Accepted commit: 2da237eb9b14a0b1c131e50405ba14d339b42572
+
+
+## Round 2: fast track (2026-11-03) — WO-08x core contract follow-up (community ID, topic and institution document types)
+
+Work order: WO-08x (short follow-up requested by the human after the Phase 08 gate; closes R-08-2 / R-07-3 and R-08-3); run in four sequential steps in the main tree: domain-engineer (community IdKind), storage-engineer (forward-compatible routing), domain-engineer (DocumentType values), rag-engineer (switch to core community ID)
+Reviewed: modules/core/** (4 modified, 2 new), modules/storage/** (2 modified), modules/rag/** (3 modified) vs d727f10; sbt check PASS (ER 19, storage 59 passed/2 skipped, core 160, rag 17, spark 3, contractTests 35, hadoop 66; 0 failed; observed by orchestrator); reviewer APPROVE (0 CRITICAL, 0 MAJOR)
+Decision: ACCEPTED WITH OPEN RISKS
+- Deviation from plan: domain-engineer's first DocumentType attempt broke storage (scala.MatchError in EmbeddingIngestion.indexFor); it was reverted, storage was made forward-compatible first, then the values landed
+- Fixed in session: R-08-3 (core IdKind.Community, cocomm:v1:H("scholarchain:coauthor-community:v1", algorithmVersion, startYear, endYear, sorted distinct memberIds), StableIds.communityId; rag-local community:v1 formula removed; community summaries now ingest into collaboration-community-v1 and are retrievable), R-08-2 / R-07-3 (DocumentType.TopicSummary "topic-summary" and InstitutionSummary "institution-summary", appended; storage routes both to topic-institution-summary-v1). Storage indexFor now routes on docType.wire and returns Either; an unrouted type becomes a REJECT (scope vector-ingest:unrouted) with provenance instead of a MatchError. Additive only: no existing ordinal, wire value, ID formula, or ID output changed; no SchemaVersion bump
+- Open: R-08x-1, MINOR, no producer or template yet for topic or institution summaries (no Topic or Institution inputs; deferred in WO-06), so topic-institution-summary-v1 stays empty; rag-engineer / spark-engineer, when Topic and Institution tables exist
+- Open: R-08x-2, MINOR, rag community pre-checks duplicate core's communityId validation, so error text could drift; core's Left still applies after them; rag-engineer, next rag change
+- Open: R-08x-3, MINOR, no golden-value test pins a specific chunk ID string (pre-existing); chunk ID stability rests on the frozen wire list; domain-engineer, next core change
+- Open: R-08x-4, MINOR, EmbeddingIngestion's public router parameter lets a future caller route a document type to an unsuitable index (nothing does today); storage-engineer, next storage change
+- Open: R-08x-5, MINOR, Spark 06b must compute community IDs with StableIds.communityId from each final member set and keep the label-propagation label as an attribute only; spark-engineer, Phase 06b
+- Closed by this round: R-08-2, R-07-3, R-08-3
+Deferred scope: topic and institution summary templates (see WO-06 "Deferred" list)
+Manual changes: none
+Accepted commit: 1a3a16905409e3895856aeb2d0ad33bbb093d262
+
+
+WO-08x: core community ID and topic/institution document types, storage routing, rag community ID (fast track): ACCEPTED
