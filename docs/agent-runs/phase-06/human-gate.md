@@ -26,4 +26,25 @@ Manual changes: none
 Accepted commit: ab8c7696aeaa9b4d9fd21a55c1819476f902f459
 
 
---Phase 06b upcoming--
+## Round 2: fast track (2026-11-03) — WO-06b Spark part B
+
+Work order: docs/agent-runs/fast-track-phases-05-09.md, WO-06b
+Reviewed: modules/spark/src/** (3 new: GraphAlgorithms, PartB, PartBSuite; 3 modified: ConnectedComponents, Support, PartASuite) vs 8843d16; sbt check PASS (ER 19, core 160, storage 59 passed/2 skipped, rag 17, spark 9, contractTests 35, hadoop 66; 0 failed; observed by orchestrator); reviewer APPROVE (0 CRITICAL, 0 MAJOR)
+Decision: ACCEPTED WITH OPEN RISKS
+- Fixed in session: none needed
+- Ownership clarifications applied by orchestrator: job 10 exports summary-input tables mapped to rag's input classes (rag owns rendering); job 11 writes Parquet plus one export manifest per target (storage owns loaders and Neptune CSV)
+- Built: label propagation (label-propagation-v1-it<N>-selfvote-minlabel, synchronous, closed-neighbourhood vote, smallest-label tie-break, community IDs from core StableIds.communityId per R-08x-5), bridges (crossCommunityDegree, distinctCommunitiesTouched), k-core peeling (fails closed at kcoreMaxRounds), bounded BFS (statuses found, beyond-depth-limit, disconnected, endpoint-missing, invalid-pair), core-shaped export (researchers, works, coauthor-edges, researcher-metrics decode as core records), edge-supporting-works pointer table, 15 export tables, manifests for neptune, dynamodb, s3-vectors, s3 with combined Part A + Part B invariantStatus. Fixture: 6 communities [3,2,2,1,1,1], coreness {0:3, 1:4, 2:3}, A→D3 and X8→C found at depth 2, other statuses as expected, all 15 Part B and 18 Part A invariants 0; tamper test shows a Part A failure as "fail" in every manifest
+- Closed by this round: R-06a-10 / R-07-2 (export maps jointPublicationCount→coauthoredWorkCount, firstCollaborationYear→firstYear, lastCollaborationYear→lastYear; rows decode as core CoauthorEdge); R-06a-12 decided (always-0 fields kept for schema stability); R-06a-14 partly (manifests carry invariant status so loaders can refuse a failing run)
+- Open: R-06b-1, MINOR, R-06a-4 partly addressed: reliable checkpoint only when a SparkContext checkpoint dir is set, else localCheckpoint; checkpoint files not cleaned up; PartBMain never calls setCheckpointDir, and the advised spark.checkpoint.dir key may only be honored from Spark 4.0 (ledger pins 3.5.8; unverified), so EMR likely falls back to local checkpoints; spark-engineer / infra-engineer, before EMR run
+- Open: R-06b-2, MINOR, inline supportingWorkIds stays uncapped because core CoauthorEdge requires it (pointer table added); spark-engineer / domain-engineer, if prolific pairs prove large
+- Open: R-06b-3, MINOR, a giant community concentrates memberIds and the community-ID hash input in one row and task; hub vertices skew the label-propagation vote; spark-engineer, EMR run
+- Open: R-06b-4, MINOR, BFS cost grows with pairs × reachable vertices; intended for small benchmark sets only; spark-engineer, EMR run
+- Open: R-06b-5, MINOR, rag inputs need joins from exported IDs; orcid null, institutionIds, externalIds and topicIds empty, no abstracts, no betweenness or pagerank; exported WorkRecord rows have empty externalIds because Part A works drop the Hadoop externalIds, so Neptune loses DOIs; spark-engineer / rag-engineer, Phase 09 or later
+- Open: R-06b-6, MINOR, edge confidence fixed at 1.0; ER match confidence not propagated; spark-engineer / entity-resolution-engineer, gold-set calibration
+- Open: R-06b-7, MINOR, fixture community split depends on researcher-ID hash order; test compares that split with a reference transcription (refLp), backed by order-free assertions; spark-engineer, next Spark change
+- Open: R-06b-8, MINOR, several new invariants are structurally 0 (community-size-members, export-edge-count, community-id-duplicate except on hash collision, first clause of bridge-inconsistent), so "15 invariants" overstates independent checking; spark-engineer, next Spark change
+- Open: R-06b-9, MINOR, PartBMain silently drops malformed path-pair lines (no status row); GraphAlgorithms comment says checkpoint mode is in each run's params.json but only Part B records it; spark-engineer, next Spark change
+- Open: R-06b-10, MINOR, PartBMain, stage metrics, skew and partition write-ups, and EMR are untested; only the local fixture ran; spark-engineer / deploy-engineer, batched AWS run
+Deferred scope: see WO-06b "Deferred" list
+Manual changes: none
+Accepted commit: 71bb200db5f31c1f08bb4e175112d28dce9c115d
