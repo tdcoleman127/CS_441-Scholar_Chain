@@ -12,9 +12,10 @@ import org.apache.spark.sql.{functions as F, DataFrame}
  * loops and endpoints outside `vertices` are ignored). Output: `(id, component)`.
  *
  * Shuffle boundaries per iteration: the message join on `src` and the `groupBy(id)` minimum. Each
- * iteration is cut with `localCheckpoint()` so lineage does not grow with the iteration count.
- * Fails closed (throws) if `maxIterations` is reached before convergence, so a partial labelling is
- * never written.
+ * iteration is cut with [[Checkpointing.cut]] (reliable checkpoint when a checkpoint directory is
+ * set, else `localCheckpoint()`) so lineage does not grow with the iteration count. Fails closed
+ * (throws) if `maxIterations` is reached before convergence, so a partial labelling is never
+ * written.
  */
 object ConnectedComponents:
 
@@ -22,14 +23,9 @@ object ConnectedComponents:
 
   def run(vertices: DataFrame, edges: DataFrame, maxIterations: Int): Result =
     require(maxIterations > 0, s"maxIterations must be positive, got $maxIterations")
-    val both = edges
-      .select(F.col("src"), F.col("dst"))
-      .union(edges.select(F.col("dst").as("src"), F.col("src").as("dst")))
-      .where(F.col("src") =!= F.col("dst"))
-      .distinct()
-      .localCheckpoint()
+    val both   = Adjacency.of(edges)
     var labels =
-      vertices.select(F.col("id"), F.col("id").as("component")).distinct().localCheckpoint()
+      Checkpointing.cut(vertices.select(F.col("id"), F.col("id").as("component")).distinct())
     var iterations = 0
     var changed    = 1L
     while changed > 0 do
@@ -42,14 +38,15 @@ object ConnectedComponents:
         .select(both("dst").as("id"), labels("component").as("m"))
         .groupBy("id")
         .agg(F.min("m").as("m"))
-      val next = labels
-        .join(msgs, Seq("id"), "left")
-        .select(
-          F.col("id"),
-          F.least(F.col("component"), F.coalesce(F.col("m"), F.col("component"))).as("component"),
-          F.coalesce(F.col("m") < F.col("component"), F.lit(false)).as("changed")
-        )
-        .localCheckpoint()
+      val next = Checkpointing.cut(
+        labels
+          .join(msgs, Seq("id"), "left")
+          .select(
+            F.col("id"),
+            F.least(F.col("component"), F.coalesce(F.col("m"), F.col("component"))).as("component"),
+            F.coalesce(F.col("m") < F.col("component"), F.lit(false)).as("changed")
+          )
+      )
       changed = next.where(F.col("changed")).count()
       labels = next.drop("changed")
       iterations += 1

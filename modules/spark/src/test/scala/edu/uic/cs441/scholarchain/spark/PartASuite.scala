@@ -145,11 +145,11 @@ class PartASuite extends munit.FunSuite:
     Files.createDirectories(p.getParent)
     Files.write(p, lines.mkString("", "\n", "\n").getBytes(UTF_8))
 
-  private def uri(p: Path): String =
+  private[spark] def uri(p: Path): String =
     val s = p.toAbsolutePath.toString.replace(java.io.File.separatorChar, '/')
     if s.startsWith("/") then "file://" + s else "file:///" + s
 
-  private def fixture(root: Path): PartAInputs =
+  private[spark] def fixture(root: Path): PartAInputs =
     val ap = root.resolve("team-extract/authorpapers/part-r-00000")
     writeLines(ap, mentions.map(authorPaperLine) :+ "this line is not json")
     val pairs = List(
@@ -231,8 +231,8 @@ class PartASuite extends munit.FunSuite:
     "U"   -> "u11",
     "V"   -> "v11"
   )
-  private val rid    = anchorOf.view.mapValues(a => IdUdfs.researcherId("dblp", mid(a))).toMap
-  private val nameOf = rid.map(_.swap)
+  private[spark] val rid = anchorOf.view.mapValues(a => IdUdfs.researcherId("dblp", mid(a))).toMap
+  private val nameOf     = rid.map(_.swap)
 
   test("CC on known graphs: empty, path, star, clique, disconnected with isolated vertices") {
     val schemaV = StructType(Seq(StructField("id", StringType)))

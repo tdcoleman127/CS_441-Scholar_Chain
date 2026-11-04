@@ -130,6 +130,13 @@ object JobFiles:
     val p = new Path(path)
     p.getFileSystem(spark.sparkContext.hadoopConfiguration).exists(p)
 
+  /** Reads a small report file (params, invariants, manifests), never a dataset. */
+  def readText(spark: SparkSession, path: String): String =
+    val p  = new Path(path)
+    val in = p.getFileSystem(spark.sparkContext.hadoopConfiguration).open(p)
+    try new String(in.readAllBytes(), UTF_8)
+    finally in.close()
+
   def writeText(spark: SparkSession, path: String, text: String): Unit =
     val p   = new Path(path)
     val out = p.getFileSystem(spark.sparkContext.hadoopConfiguration).create(p, false)
