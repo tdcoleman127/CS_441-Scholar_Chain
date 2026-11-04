@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scholarchain:rag-answer-claim-schema-v1",
+  "title": "rag-answer-claim-schema-v1 (DraftAnswer; mirrors modules/rag runtime/Synthesis.scala)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "claims"],
+  "properties": {
+    "schema": { "const": "rag-answer-claim-schema-v1" },
+    "claims": {
+      "type": "array",
+      "maxItems": 25,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assertion", "evidenceIds"],
+        "properties": {
+          "evidenceIds": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^evidence:v1:[0-9a-f]{64}$" }
+          },
+          "assertion": {
+            "type": "object",
+            "required": ["$type", "window"],
+            "properties": {
+              "$type": {
+                "enum": [
+                  "CoauthoredWith",
+                  "PathExists",
+                  "MetricValueIs",
+                  "MemberOfCommunity",
+                  "BridgeScore",
+                  "InComponent"
+                ]
+              },
+              "window": {
+                "type": "object",
+                "required": ["startYear", "endYear"],
+                "properties": {
+                  "startYear": { "type": "integer" },
+                  "endYear": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
