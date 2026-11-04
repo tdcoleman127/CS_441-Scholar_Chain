@@ -153,13 +153,19 @@ enum VenueKind(val wire: String):
 object VenueKind:
   given ReadWriter[VenueKind] = WireEnum.readWriter("VenueKind", values.toSeq, _.wire)
 
-/** Document type of an embedded chunk or profile (input to the chunk ID). */
+/**
+ * Document type of an embedded chunk or profile (input to the chunk ID). New cases are appended
+ * only, so existing ordinals and wire values never change. Consumers route on `wire`, not on an
+ * exhaustive match, so adding a case is additive.
+ */
 enum DocumentType(val wire: String):
   case ResearcherProfile    extends DocumentType("researcher-profile")
   case WorkAbstract         extends DocumentType("work-abstract")
   case WorkMetadata         extends DocumentType("work-metadata")
   case CollaborationSummary extends DocumentType("collaboration-summary")
   case EvidencePath         extends DocumentType("evidence-path")
+  case TopicSummary         extends DocumentType("topic-summary")
+  case InstitutionSummary   extends DocumentType("institution-summary")
 
 object DocumentType:
   given ReadWriter[DocumentType] = WireEnum.readWriter("DocumentType", values.toSeq, _.wire)

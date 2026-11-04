@@ -1,6 +1,6 @@
 package edu.uic.cs441.scholarchain.rag
 
-import edu.uic.cs441.scholarchain.core.ids.StableIds
+import edu.uic.cs441.scholarchain.core.ids.{IdFormat, IdKind, StableIds}
 import edu.uic.cs441.scholarchain.core.model.*
 import edu.uic.cs441.scholarchain.rag.semantic.*
 import edu.uic.cs441.scholarchain.storage.vectors.EmbeddingIngestion
@@ -120,7 +120,7 @@ class SummaryTemplatesSuite extends munit.FunSuite:
     assert(absLine.endsWith("...\""))
   }
 
-  test("community profile ID is deterministic under member order and is not a core ID kind") {
+  test("community profile entity ID is core's cocomm:v1 community ID, independent of order") {
     val in1 = CommunityProfileInput(
       "louvain-v1",
       window,
@@ -130,13 +130,29 @@ class SummaryTemplatesSuite extends munit.FunSuite:
       names,
       prov("c/1")
     )
-    val in2 = in1.copy(memberIds = List(carol, alice, bob, alice))
-    val s1  = communityProfile(in1).toOption.get
+    val in2      = in1.copy(memberIds = List(carol, alice, bob, alice))
+    val s1       = communityProfile(in1).toOption.get
+    val expected = StableIds.communityId("louvain-v1", window, List(alice, bob, carol))
     assertEquals(communityProfile(in2), Right(s1))
-    assert(s1.entityId.startsWith("community:v1:"))
+    assertEquals(Right(s1.entityId), expected)
+    assertEquals(StableIds.communityId("louvain-v1", window, List(carol, bob, alice)), expected)
+    assert(IdFormat.isValid(IdKind.Community, s1.entityId), s1.entityId)
+    assert(s1.entityId.startsWith("cocomm:v1:"), s1.entityId)
     assertEquals(s1.docType, DocumentType.CollaborationSummary)
+    assertEquals(s1.provenance, prov("c/1"))
+    assertEquals(s1.sourceVersion, "community-profile-template-v1/2015-2020")
+    val lines = s1.text.linesIterator.toList
+    assertEquals(lines(1), s"community: ${s1.entityId} algorithm=\"louvain-v1\"")
     assert(s1.text.contains("members: 3; internal coauthor edges: 3"))
     assert(communityProfile(in1.copy(memberIds = List("not-a-researcher"))).isLeft)
+  }
+
+  test("community profile turns core community ID errors into Left, never an exception") {
+    val in = CommunityProfileInput("louvain-v1", window, List(alice, bob), 1, Nil, names, prov("c"))
+    val inverted = communityProfile(in.copy(window = YearWindow(2020, 2015)))
+    assert(inverted.left.exists(_.contains("communityId:")), inverted.toString)
+    assert(communityProfile(in.copy(algorithmVersion = " ")).isLeft)
+    assert(communityProfile(in.copy(memberIds = Nil)).isLeft)
   }
 
   test("injection in titles and names stays one quoted data line") {

@@ -68,13 +68,31 @@ object EmbeddingIngestion:
   /** Artifact schema version of the `semantic-context/<docType>/v1/...` objects. */
   val ContextSchemaVersion: Int = 1
 
-  /** Index for each core document type (no core type maps to topic-institution-summary-v1). */
-  def indexFor(docType: DocumentType): VectorIndex = docType match
-    case DocumentType.ResearcherProfile    => VectorIndex.ResearcherProfile
-    case DocumentType.CollaborationSummary => VectorIndex.CollaborationCommunity
-    case DocumentType.WorkAbstract         => VectorIndex.PaperAbstract
-    case DocumentType.WorkMetadata         => VectorIndex.PaperAbstract
-    case DocumentType.EvidencePath         => VectorIndex.CollaborationPath
+  /**
+   * Routing table from document-type wire value to vector index. Routing is on the wire value, not
+   * on the enum case, so a document type that core adds later never makes this a partial match: a
+   * wire value listed here routes as soon as core defines it, and any other value is a typed
+   * rejection ([[routeWire]] returns Left), never a MatchError.
+   */
+  val Routes: Map[String, VectorIndex] = Map(
+    "researcher-profile"    -> VectorIndex.ResearcherProfile,
+    "collaboration-summary" -> VectorIndex.CollaborationCommunity,
+    "work-abstract"         -> VectorIndex.PaperAbstract,
+    "work-metadata"         -> VectorIndex.PaperAbstract,
+    "evidence-path"         -> VectorIndex.CollaborationPath,
+    "topic-summary"         -> VectorIndex.TopicInstitutionSummary,
+    "institution-summary"   -> VectorIndex.TopicInstitutionSummary
+  )
+
+  /** Index for a document-type wire value; Left (the rejection reason) when none is routed. */
+  def routeWire(wire: String): Either[String, VectorIndex] =
+    Routes.get(wire).toRight(s"no vector index is routed for docType '$wire'")
+
+  /** Index for a core document type. Total: an unrouted type is Left, never a MatchError. */
+  def indexFor(docType: DocumentType): Either[String, VectorIndex] = routeWire(docType.wire)
+
+  /** Reject scope of summaries whose document type routes to no index. */
+  val UnroutedScope: String = "vector-ingest:unrouted"
 
   /** Vector key: the core chunk ID (no ordinal: chunking is deferred). */
   def vectorKey(s: SemanticSummary): String =
@@ -86,7 +104,10 @@ object EmbeddingIngestion:
 /**
  * Manifest-driven embedding ingestion (no queue). For each index, in order:
  *
- *   1. Validate every summary and build its metadata; invalid ones are rejected.
+ *   1. Route every summary to its index by document-type wire value (`router`, default
+ *      [[EmbeddingIngestion.routeWire]]), validate it, and build its metadata. Unrouted and invalid
+ *      summaries are rejected and recorded with their provenance (unrouted ones under
+ *      `vector-ingest:unrouted`); none is embedded.
  *   2. Duplicate vector keys: identical summaries collapse; differing ones are all rejected.
  *   3. Look up stored metadata of the keys (GetVectors, at most 100 keys per call). A key whose
  *      stored `textHash` and `modelVersion` both equal the current ones is skipped and is never
@@ -109,9 +130,14 @@ final class EmbeddingIngestion(
     batchSize: Int = 100,
     policy: RetryPolicy = RetryPolicy.Default,
     sleeper: Sleeper = Sleeper.Real,
-    maxConsecutiveFailedBatches: Int = 3
+    maxConsecutiveFailedBatches: Int = 3,
+    router: String => Either[String, VectorIndex] = EmbeddingIngestion.routeWire
 ):
   import EmbeddingIngestion.*
+
+  /** Reject scope of a summary: its index scope, or [[UnroutedScope]] when it routes nowhere. */
+  private def scopeOf(s: SemanticSummary): String =
+    router(s.docType.wire).fold(_ => UnroutedScope, rejectScope)
 
   require(batchSize >= 1 && batchSize <= VectorStore.MaxBatchSize, "batchSize must be in 1..500")
   require(maxConsecutiveFailedBatches >= 1, "maxConsecutiveFailedBatches must be positive")
@@ -129,9 +155,16 @@ final class EmbeddingIngestion(
       modelVersion: String,
       s: SemanticSummary
   ): Either[String, Planned] =
-    val key   = vectorKey(s)
-    val index = indexFor(s.docType)
-    val pre   = List(
+    router(s.docType.wire).flatMap(index => planRouted(runId, modelVersion, s, index))
+
+  private def planRouted(
+      runId: String,
+      modelVersion: String,
+      s: SemanticSummary,
+      index: VectorIndex
+  ): Either[String, Planned] =
+    val key = vectorKey(s)
+    val pre = List(
       Option.when(s.text.trim.isEmpty)("text is blank"),
       Option.when(StableIds.textHash(s.text) != s.textHash)("textHash does not match text"),
       Option.when(s.sourceVersion.trim.isEmpty)("sourceVersion is blank"),
@@ -220,12 +253,12 @@ final class EmbeddingIngestion(
         ps.distinct.map(p => (p.summary, p.key, "conflicting duplicate key in input"))
       )
       collapsed = unique.map((_, ps) => ps.size - 1).sum
-      _ <- invalid.groupBy(t => indexFor(t._1.docType)).toList.sortBy(_._1.ordinal).foldLeft[
+      _ <- invalid.groupBy(t => scopeOf(t._1)).toList.sortBy(_._1).foldLeft[
         Either[StorageError, Unit]
-      ](Right(()))((acc, kv) => acc.flatMap(_ => record(runId, rejectScope(kv._1), kv._2)))
-      _ <- conflicts.groupBy(t => indexFor(t._1.docType)).toList.sortBy(_._1.ordinal).foldLeft[
+      ](Right(()))((acc, kv) => acc.flatMap(_ => record(runId, kv._1, kv._2)))
+      _ <- conflicts.groupBy(t => scopeOf(t._1)).toList.sortBy(_._1).foldLeft[
         Either[StorageError, Unit]
-      ](Right(()))((acc, kv) => acc.flatMap(_ => record(runId, rejectScope(kv._1), kv._2)))
+      ](Right(()))((acc, kv) => acc.flatMap(_ => record(runId, kv._1, kv._2)))
       byIndex = unique.map(_._2.head).groupBy(_.index).toList.sortBy(_._1.ordinal)
       todo <- byIndex.foldLeft[Either[StorageError, List[(VectorIndex, List[Planned], Int)]]](
         Right(Nil)

@@ -25,6 +25,8 @@ import edu.uic.cs441.scholarchain.core.validation.ValidationError
  *                           sourceDataset, sourceRecordId)
  * coedge       coedge:v1:H("scholarchain:coauthor-edge:v1", low, high,
  *                          startYear, endYear, policyVersion)
+ * cocomm       cocomm:v1:H("scholarchain:coauthor-community:v1", algorithmVersion,
+ *                          startYear, endYear, list(sorted distinct memberIds))
  * chunk        chunk:v1:H("scholarchain:chunk:v1", entityId, sourceVersion, documentType,
  *                         ordinal or "", textHash)
  * gedge        gedge:v1:H("scholarchain:graph-edge:v1", edgeType, from, to, policyVersion,
@@ -148,6 +150,47 @@ object StableIds:
       "scholarchain:coauthor-edge:v1",
       Seq(pair.low, pair.high, window.startYear.toString, window.endYear.toString, policyVersion)
     )
+
+  /**
+   * Community ID (`cocomm:v1:<hex>`) of one community of the coauthorship graph in one window.
+   *
+   * Identity is the membership set, the graph window, and the algorithm version, so two runs that
+   * produce the same partition give the same IDs. Members are researcher IDs, deduplicated and
+   * sorted before hashing, so member order and repeats do not matter. The algorithm's own label
+   * (for example a label-propagation label) is deliberately not an input: it depends on iteration
+   * order and tie-breaking, and when it is deterministic it is a member ID that the membership
+   * already captures. Keep the label as an attribute if needed. `algorithmVersion` must identify
+   * the algorithm and its parameters (for example `label-propagation-v1`); a parameter change that
+   * can change the partition needs a new version string.
+   *
+   * Rejects a blank algorithm version, a window whose start year exceeds its end year, an empty
+   * membership, and any member that is not a well-formed researcher ID.
+   */
+  def communityId(
+      algorithmVersion: String,
+      window: YearWindow,
+      memberIds: Seq[String]
+  ): Either[ValidationError, String] =
+    val badMember = memberIds.zipWithIndex.find((m, _) => !IdFormat.isValid(IdKind.Researcher, m))
+    if algorithmVersion.trim.isEmpty then
+      Left(ValidationError.InvalidField("algorithmVersion", "must not be blank"))
+    else if window.startYear > window.endYear then
+      Left(ValidationError.InvalidYearWindow("window", window.startYear, window.endYear))
+    else if memberIds.isEmpty then
+      Left(ValidationError.InvalidField("memberIds", "must not be empty"))
+    else
+      badMember match
+        case Some((m, i)) =>
+          Left(ValidationError.MalformedId(s"memberIds[$i]", IdKind.Researcher.prefix, m))
+        case None =>
+          Right(
+            hashed(
+              IdKind.Community,
+              "scholarchain:coauthor-community:v1",
+              Seq(algorithmVersion, window.startYear.toString, window.endYear.toString) ++
+                list(sortedDistinct(memberIds))
+            )
+          )
 
   /** Chunk or profile ID. `textHash` is [[CanonicalHash.contentHash]] of the chunk text. */
   def chunkId(

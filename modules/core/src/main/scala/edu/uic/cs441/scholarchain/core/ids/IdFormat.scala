@@ -13,7 +13,8 @@ import edu.uic.cs441.scholarchain.core.model.IdNamespace
  * Researcher: `researcher:orcid:<ORCID with valid checksum>` or `researcher:sc<N>:<64 hex>`, where
  * N is a supported ScholarChain identity version.
  *
- * Hashed kinds: `<prefix>:v1:<64 lowercase hex>`. Content hashes: `sha256:<64 lowercase hex>`.
+ * Hashed kinds (including `cocomm`, the coauthorship community): `<prefix>:v1:<64 lowercase hex>`.
+ * Content hashes: `sha256:<64 lowercase hex>`.
  */
 enum IdKind(val prefix: String, val namespaces: Set[IdNamespace]):
   case Work
@@ -59,6 +60,13 @@ enum IdKind(val prefix: String, val namespaces: Set[IdNamespace]):
   case Answer         extends IdKind("answer", Set.empty)
   case Run            extends IdKind("run", Set.empty)
   case ContentHash    extends IdKind("sha256", Set.empty)
+
+  /**
+   * A community of the temporal coauthorship graph: `cocomm:v1:<64 hex>` (see
+   * [[StableIds.communityId]]). The prefix parallels `coedge`. It is deliberately not `community`:
+   * the Phase 08 rag-local `community:v1:<hex>` IDs are not core IDs and stay invalid.
+   */
+  case Community extends IdKind("cocomm", Set.empty)
 
   def isNamespaced: Boolean = namespaces.nonEmpty
 

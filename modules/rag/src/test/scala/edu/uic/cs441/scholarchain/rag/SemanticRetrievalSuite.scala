@@ -131,7 +131,7 @@ class SemanticRetrievalSuite extends munit.FunSuite:
     )
   }
 
-  test("path and paper summaries are ingestible; community summaries are rejected (R-08-3)") {
+  test("path, paper, and community summaries are ingestible; a community query returns it") {
     val e    = env()
     val eAB  = edge(alice, bob, 3, 2016, 2019)
     val path = collaborationPath(
@@ -149,12 +149,17 @@ class SemanticRetrievalSuite extends munit.FunSuite:
     ).toOption.get
     val rep = e.ing.ingest(runId, List(path, paper, community), Embedder.toSupplier(fake))
       .toOption.get
-    assertEquals(rep.written, 2)
-    assertEquals(rep.rejected.size, 1)
-    assert(rep.rejected.head._2.contains("entityId is not a stable ID"), rep.rejected.toString)
+    assert(community.entityId.startsWith("cocomm:v1:"), community.entityId)
+    assertEquals((rep.written, rep.rejected, rep.failed), (3, Nil, Nil))
     assertEquals(e.vs.count(VectorIndex.CollaborationPath), 1)
     assertEquals(e.vs.count(VectorIndex.PaperAbstract), 1)
-    assertEquals(e.vs.count(VectorIndex.CollaborationCommunity), 0)
+    assertEquals(e.vs.count(VectorIndex.CollaborationCommunity), 1)
+    val ctx = e.retriever().search(VectorIndex.CollaborationCommunity, "louvain community", 3)
+      .toOption.get
+    assertEquals(ctx.dropped, Nil)
+    assertEquals(ctx.items.map(_.entityId), List(community.entityId))
+    assertEquals(ctx.items.head.provenance, prov("c/1"))
+    assertEquals(ctx.items.head.textHash, community.textHash)
   }
 
   test("context text that does not match its hash is dropped, never used") {

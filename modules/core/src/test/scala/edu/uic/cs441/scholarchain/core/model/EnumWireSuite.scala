@@ -124,7 +124,9 @@ class EnumWireSuite extends munit.FunSuite:
       "work-abstract",
       "work-metadata",
       "collaboration-summary",
-      "evidence-path"
+      "evidence-path",
+      "topic-summary",
+      "institution-summary"
     )
   )
   frozen(

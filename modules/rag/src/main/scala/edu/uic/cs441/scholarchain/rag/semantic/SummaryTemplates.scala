@@ -1,6 +1,6 @@
 package edu.uic.cs441.scholarchain.rag.semantic
 
-import edu.uic.cs441.scholarchain.core.ids.{CanonicalHash, IdFormat, IdKind, StableIds}
+import edu.uic.cs441.scholarchain.core.ids.{IdFormat, IdKind, StableIds}
 import edu.uic.cs441.scholarchain.core.model.*
 import edu.uic.cs441.scholarchain.storage.vectors.SemanticSummary
 
@@ -20,8 +20,9 @@ final case class ResearcherProfileInput(
 )
 
 /**
- * Community profile. `communityId` is rag local (core has no community ID kind, R-08-3); see
- * [[SummaryTemplates.communityId]].
+ * Community profile. The summary's entity ID is core's community ID (`cocomm:v1:`), computed by
+ * `StableIds.communityId(algorithmVersion, window, memberIds)`; rag defines no community ID of its
+ * own.
  */
 final case class CommunityProfileInput(
     algorithmVersion: String,
@@ -81,22 +82,6 @@ object SummaryTemplates:
    */
   def sourceVersion(template: String, window: Option[YearWindow]): String =
     s"$template/${TextRules.window(window)}"
-
-  /**
-   * Rag-local community ID: `community:v1:<H(tag, algorithmVersion, start, end, sorted members)>`.
-   * It is not a core IdKind, so storage metadata validation rejects it (R-08-3).
-   */
-  def communityId(algorithmVersion: String, window: YearWindow, memberIds: Seq[String]): String =
-    val members = memberIds.distinct.sorted
-    "community:v1:" + CanonicalHash.hashFields(
-      Seq(
-        "scholarchain:community:v1",
-        algorithmVersion,
-        window.startYear.toString,
-        window.endYear.toString,
-        members.size.toString
-      ) ++ members
-    )
 
   private def summary(
       entityId: String,
@@ -209,7 +194,11 @@ object SummaryTemplates:
           Option.when(in.internalEdgeCount < 0)("internalEdgeCount is negative")
         ) ++ members.filterNot(researcherOk).map(m => Some(s"member $m is not a researcher ID"))
       )
-      id     = communityId(in.algorithmVersion, in.window, members)
+      // Core's community ID; its ValidationError (for example an inverted window) becomes this
+      // template's Left, never an exception.
+      id <- StableIds.communityId(in.algorithmVersion, in.window, members).left.map(e =>
+        s"communityId: ${e.message}"
+      )
       listed = members.take(MaxMembersListed)
       s <- summary(
         id,

@@ -268,9 +268,40 @@ class EmbeddingIngestionSuite extends munit.FunSuite:
     assert(r.failed.head._2.contains("semantic-context write failed after 1 attempts"), r.failed)
   }
 
-  test("routing: each core document type maps to a vector index; none to topic-institution") {
-    val mapped = DocumentType.values.map(EmbeddingIngestion.indexFor).toSet
-    assert(!mapped.contains(VectorIndex.TopicInstitutionSummary))
+  test("routing: total on wire values; topic and institution summaries share one index") {
+    // Wire routing for the two summary types core is adding (R-08-2). No DocumentType case needed.
+    assertEquals(
+      EmbeddingIngestion.routeWire("topic-summary"),
+      Right(VectorIndex.TopicInstitutionSummary)
+    )
+    assertEquals(
+      EmbeddingIngestion.routeWire("institution-summary"),
+      Right(VectorIndex.TopicInstitutionSummary)
+    )
+    // Every DocumentType core defines, now or later, routes without throwing.
+    DocumentType.values.foreach(d =>
+      assert(EmbeddingIngestion.indexFor(d).isRight, s"${d.wire} is not routed")
+    )
+    // Fixed routes of the current types.
+    val expected = Map(
+      "researcher-profile"    -> VectorIndex.ResearcherProfile,
+      "collaboration-summary" -> VectorIndex.CollaborationCommunity,
+      "work-abstract"         -> VectorIndex.PaperAbstract,
+      "work-metadata"         -> VectorIndex.PaperAbstract,
+      "evidence-path"         -> VectorIndex.CollaborationPath,
+      "topic-summary"         -> VectorIndex.TopicInstitutionSummary,
+      "institution-summary"   -> VectorIndex.TopicInstitutionSummary
+    )
+    DocumentType.values.filter(d => expected.contains(d.wire)).foreach(d =>
+      assertEquals(EmbeddingIngestion.indexFor(d), Right(expected(d.wire)), d.wire)
+    )
+    assertEquals(EmbeddingIngestion.Routes, expected)
+    assertEquals(EmbeddingIngestion.Routes.values.toSet, VectorIndex.values.toSet)
+    // An unknown wire value is a typed rejection, not an exception.
+    val unknown = EmbeddingIngestion.routeWire("grant-summary")
+    assert(unknown.left.exists(_.contains("'grant-summary'")), s"$unknown")
+    assert(EmbeddingIngestion.routeWire("").isLeft)
+    assert(EmbeddingIngestion.routeWire("Topic-Summary").isLeft, "routing is exact, not fuzzy")
     val e   = env()
     val rep = e.ing.ingest(
       run2,
@@ -279,6 +310,73 @@ class EmbeddingIngestionSuite extends munit.FunSuite:
     ).toOption.get
     assertEquals(rep.written, 2)
     assertEquals(e.vs.count(VectorIndex.CollaborationCommunity), 1)
+  }
+
+  test("unrouted document type: REJECT with provenance, never embedded, replay-stable") {
+    val vs  = InMemoryVectorStore()
+    val os  = InMemoryObjectStore()
+    val led = RunLedgerTable(InMemoryKeyValueStore(), RetryPolicy.NoRetry)
+    // Simulates a document type core defines but storage does not route.
+    val router: String => Either[String, VectorIndex] = w =>
+      if w == "collaboration-summary" then Left(s"no vector index is routed for docType '$w'")
+      else EmbeddingIngestion.routeWire(w)
+    val ing = EmbeddingIngestion(vs, os, led, 100, RetryPolicy.NoRetry, (_: Long) => (), 3, router)
+    val emb = CountingEmbedder()
+    val routed  = summary(1)
+    val stray   = summary(2, docType = DocumentType.CollaborationSummary)
+    val rep     = ing.ingest(run2, Seq(routed, stray), emb.supplier).toOption.get
+    val strayKy = EmbeddingIngestion.vectorKey(stray)
+    assertEquals(rep.written, 1)
+    assertEquals(
+      rep.rejected,
+      List(strayKy -> "no vector index is routed for docType 'collaboration-summary'")
+    )
+    assertEquals(emb.texts, List(routed.text))
+    assertEquals(VectorIndex.values.map(vs.count).sum, 1)
+    assertEquals(os.keys.size, 1, "no semantic-context text for the unrouted summary")
+    val recorded = led.rejects(run2, 100).toOption.get
+    assertEquals(
+      recorded.map(r => (r.scope, r.key)),
+      List((EmbeddingIngestion.UnroutedScope, strayKy))
+    )
+    assertEquals(recorded.map(_.provenance), List(prov("r/2")))
+    assertEquals(recorded.map(_.runId), List(run2))
+    val again = ing.ingest(run2, Seq(stray, routed), emb.supplier)
+    assert(again.isRight, s"$again")
+    assertEquals(led.rejects(run2, 100), Right(recorded))
+  }
+
+  test("a core community ID (cocomm:v1) is a valid entityId; rag-local community:v1 is not") {
+    val cocomm = "cocomm:v1:" + "ab" * 32
+    val text   = "community summary"
+    val ref    = ObjectKey.parse("semantic-context/collaboration-summary/v1/c.json").toOption.get
+    def meta(id: String) = VectorMetadata(
+      id,
+      DocumentType.CollaborationSummary,
+      Some((2000, 2020)),
+      prov("r/c"),
+      "embed-v1",
+      StableIds.textHash(text),
+      ref
+    ).toMap
+    assertEquals(VectorMetadata.validate(meta(cocomm)), Nil)
+    assertEquals(
+      VectorMetadata.validate(meta("community:v1:" + "ab" * 32)),
+      List("entityId is not a stable ID")
+    )
+    assertEquals(VectorMetadata.validate(meta("cocomm:v1:" + "AB" * 32)).size, 1)
+    // End to end: a community summary keyed by a cocomm ID is ingested, not rejected.
+    val e = env()
+    val s = summary(1, text = text, docType = DocumentType.CollaborationSummary)
+      .copy(entityId = cocomm)
+    val rep = e.ing.ingest(run2, Seq(s), CountingEmbedder().supplier).toOption.get
+    assertEquals((rep.written, rep.rejected), (1, Nil))
+    assertEquals(
+      e.vs.stored(VectorIndex.CollaborationCommunity, EmbeddingIngestion.vectorKey(s)).map(
+        _.metadata("entityId")
+      ),
+      Some(MetaValue.Str(cocomm))
+    )
   }
 
   test("GetVectors lookup is bounded and a failed lookup surfaces a typed error") {
