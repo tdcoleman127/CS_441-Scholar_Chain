@@ -1,0 +1,148 @@
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+index d42a982..9f87f2c 100755
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -306,43 +306,39 @@ sc_dollar_quote() {
+   return 1
+ }
+ # CP10 (N2): bash deletes an unquoted (or double-quoted) backslash-newline before it lexes, so
+-# `$\<LF>'...'` becomes `$'...'`. The guard does not fold continuations: a backslash directly
+-# before LF or CR outside single quotes is rejected for every caller (fail closed).
++# `$\<LF>'...'` becomes `$'...'`. repair-02 (R2): the guard does not fold continuations and does
++# not model comments or heredoc bodies, so it cannot know the quote state of a backslash. A
++# backslash directly before LF or CR is rejected ANYWHERE in the text, in every quote state, for
++# every caller (fail closed). This subsumes the CP10 shell-launcher rule, which is removed.
+ sc_bs_newline() {
+-  local s="$1" i n=${#1} ch nx q=""
+-  for ((i=0; i<n; i++)); do
+-    ch="${s:i:1}"; nx="${s:i+1:1}"
+-    if [ "$q" = "'" ]; then
+-      [ "$ch" = "'" ] && q=""
+-    else
+-      if [ "$ch" = '\' ]; then
+-        if [ "$nx" = $'\n' ] || [ "$nx" = $'\r' ]; then return 0; fi
+-        i=$((i+1))
+-      elif [ "$ch" = '"' ]; then
+-        if [ "$q" = '"' ]; then q=""; else q='"'; fi
+-      elif [ "$ch" = "'" ] && [ -z "$q" ]; then q="'"; fi
+-    fi
+-  done
++  case "$1" in *\\$'\n'*|*\\$'\r'*) return 0 ;; esac
++  return 1
++}
++# repair-02 (R2): sc_dollar_quote tracks quote state, and an apostrophe in a '#' comment or a
++# heredoc body (which bash does not treat as a quote) desynchronizes it, so a later $'...' looks
++# single-quoted. A comment only reaches past its own line, and a heredoc body needs a newline, so
++# in a multi-line command (LF or CR anywhere) the quote state is not trusted: the two-character
++# sequence $' or $" is rejected wherever it appears. The same applies when the text contains '${'
++# (quoting inside ${...} is not modelled either). Single-line commands without '${' keep the
++# quote-aware check, so grep 'x$' and grep "x$" stay allowed there.
++sc_dollar_anywhere() {
++  case "$1" in
++    *$'\n'*|*$'\r'*|*'${'*) case "$1" in *"\$'"*|*'$"'*) return 0 ;; esac ;;
++  esac
+   return 1
+ }
+ sc_hidden_quote() {   # <string>: section 0 and N2 checks, reused on inner command strings (N3)
+   if sc_bs_newline "$1"; then
+-    sc_block "a backslash-newline line continuation outside single quotes cannot be verified by this guard, so the command is blocked for every caller (fail closed). Put the command on one line."
++    sc_block "a backslash directly before a newline or carriage return cannot be verified by this guard (bash may fold it into a line continuation), so the command is blocked for every caller, inside or outside quotes (fail closed). Put the command on one line."
+   fi
+   if sc_dollar_quote "$1"; then
+     sc_block "ANSI-C or locale quoting (\$'...' or \$\"...\") cannot be verified by this guard, so the command is blocked for every caller (fail closed). Write the characters literally, for example tee instead of \$'\\x74ee'."
+   fi
++  if sc_dollar_anywhere "$1"; then
++    sc_block "a multi-line command (or one containing '\${') that contains \$' or \$\" anywhere is blocked for every caller, because a comment or heredoc can hide ANSI-C quoting from this guard (fail closed). Put the command on one line without '\${', or avoid a '\$' directly before a quote character."
++  fi
+ }
+ sc_hidden_quote "$raw"
+-# CP10 (N2/N3): wrap9 reads segments line by line, so it never sees a backslash-newline that sits
+-# inside a quoted inner command string. When the command names a shell-string launcher, a
+-# backslash before LF or CR is rejected even inside single quotes (fail closed).
+-case "$raw" in
+-  *\\$'\n'*|*\\$'\r'*)
+-    if has "$cmd" '(^|[^a-z0-9_.-])(bash|sh|zsh|dash|ksh|mksh|busybox|eval|su|runuser|env|script|pwsh|powershell|cmd)([^a-z0-9_.-]|$)'; then
+-      sc_block "a backslash-newline inside a command that starts a shell (bash, sh, eval, env, su, ...) cannot be verified, because the inner shell folds it (fail closed). Put the inner command on one line."
+-    fi ;;
+-esac
+ if sc_dollar_quote "$raw"; then
+   sc_block "ANSI-C or locale quoting (\$'...' or \$\"...\") cannot be verified by this guard, so the command is blocked for every caller (fail closed). Write the characters literally, for example tee instead of \$'\\x74ee'."
+ fi
+@@ -1205,6 +1201,10 @@ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" ||
+   # $ ` \ " ; & < > ( ) and '||' or '|&'. Allowed outside single quotes: '|' as a pipe, and the
+   # exact words 2>/dev/null and 2>&1 (dropped from the segment). This subsumes the CP7 $' check,
+   # which is removed: a '$' outside single quotes is rejected, and inside them it is literal.
++  # repair-02 (R1): bash expands braces, globs, and a word-initial tilde AFTER this check, so
++  # `rg x {--pre=echo,.}` becomes `rg x --pre=echo .` and `rg x dir/*` can expand to a planted
++  # file named like an option. Outside single quotes { } * ? [ ] are rejected, and so is '~' at
++  # the start of a word or after '=' or ':'. Quote patterns instead: find . -name '*.sh'.
+   case "$raw" in *$'\n'*|*$'\r'*) ro_block "a newline or carriage return in the command (fail closed)" ;; esac
+   ro_split() {   # one segment per line on stdout; status 1 (with RO_WHY) when the rule is broken
+     local s="$1" i n=${#1} ch q="" cur="" prev=" " w
+@@ -1228,6 +1228,9 @@ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" ||
+                [ -n "${cur//[[:space:]]/}" ] || { RO_WHY="an empty pipeline segment"; return 1; }
+                printf '%s\n' "$cur"; cur="" ;;
+           '$'|'`'|'\'|'"'|';'|'&'|'<'|'>'|'('|')') RO_WHY="'$ch' outside single quotes"; return 1 ;;
++          '{'|'}'|'*'|'?'|'['|']') RO_WHY="'$ch' outside single quotes (brace or glob expansion; quote the pattern)"; return 1 ;;
++          '~') case "$prev" in ' '|$'\t'|'='|':') RO_WHY="'~' at the start of a word outside single quotes (tilde expansion)"; return 1 ;; esac
++               cur+="$ch" ;;
+           *) cur+="$ch" ;;
+         esac
+       fi
+@@ -1277,12 +1280,30 @@ if [ "$caller" != "orchestrator" ] && { in_list "$caller" "$READ_ONLY_AGENTS" ||
+         ro_check_opts "hv" "f" \
+           "recursive force no-color no-module help version" \
+           "format chdir filter minimum-failure-severity var-file var only enable-rule disable-rule call-module-type" 0 || ro_block "tflint: $RO_WHY" ;;
+-      file) has "$seg" "[[:space:]](-[a-zA-Z]*C|--compile)([[:space:]]|$)" && ro_block "file -C/--compile (writes a .mgc file)" ;;
+-      date) has "$seg" "[[:space:]](-[a-zA-Z]*s|--set)([=[:space:]]|$)" && ro_block "date -s/--set" ;;
+-      find) has "$seg_lc" "[[:space:]]-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)([[:space:]]|$)" && ro_block "find with -delete/-exec/-fprint" ;;
++      # repair-02 (R1): file, date and find are checked on the quote-removed words W (toks_of), not
++      # on the raw text, so a quoted ('-delete') or split (-de''lete) option is still seen.
++      file) for a in "${W[@]:1}"; do [[ "$a" =~ ^(-[a-zA-Z]*C|--compile)$ ]] && ro_block "file -C/--compile (writes a .mgc file)"; done ;;
++      date) for a in "${W[@]:1}"; do [[ "$a" =~ ^(-[a-zA-Z]*s.*|--set(=.*)?)$ ]] && ro_block "date -s/--set"; done ;;
++      find)
++        for a in "${W[@]:1}"; do
++          a="$(printf '%s' "$a" | tr '[:upper:]' '[:lower:]')"
++          case "$a" in
++            -delete|-exec|-execdir|-ok|-okdir|-fprint|-fprint0|-fprintf|-fls) ro_block "find with -delete/-exec/-ok/-fprint/-fls" ;;
++          esac
++        done ;;
+       git)
+-        # Global options (-c, -C, --exec-path, -p/--paginate, --git-dir, ...) are rejected because
++        # Global options (-c, --exec-path, -p/--paginate, --git-dir, ...) are rejected because
+         # argv[1] must be an allowed subcommand. difftool, config, and every writer are not listed.
++        # repair-02 (R4): exactly one '-C <dir>' (case-sensitive) may come first, and only when
++        # <dir> resolves to the repository root, which is the same as running git there. Any other
++        # directory could hold a planted .git/config (core.fsmonitor, core.pager), so it is rejected.
++        if [ "${W[1]:-}" = "-C" ]; then
++          [ "${#W[@]}" -ge 4 ] || ro_block "git -C without a directory and subcommand"
++          [ "$(sc_classify_path "${W[2]}")" = "REL ." ] || ro_block "git -C '${W[2]}' (only the repository root is allowed)"
++          W=("${W[0]}" "${W[@]:3}")
++          s1="$(printf '%s' "${W[1]:-}" | tr '[:upper:]' '[:lower:]')"
++          seg_lc="${W[*]}"; seg_lc="$(printf '%s' "$seg_lc" | tr '[:upper:]' '[:lower:]')"
++        fi
+         case "$s1" in
+           diff|log|show|status|blame|ls-files|ls-tree|rev-parse|grep|shortlog|describe|cat-file|merge-base|name-rev|rev-list) ;;
+           --version) [ "${#W[@]}" -eq 2 ] || ro_block "git --version with further words" ;;   # CP5 (F12)
+diff --git a/docs/agents.md b/docs/agents.md
+index 71cef49..8ac14ce 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -104,7 +104,7 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
+ | `rag-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
+ | `service-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
+ | `test-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook limits Write and Edit to `tests/**`; Bash writes are fenced by instruction and review only |
+-| `code-reviewer` | Read, Grep, Glob, Bash | No Write, Edit, or MCP. Bash is fenced to evidence commands by guard-dangerous.sh (`READ_ONLY_AGENTS`) |
++| `code-reviewer` | Read, Grep, Glob, Bash | No Write, Edit, or MCP. Bash is fenced to evidence commands by guard-dangerous.sh (`READ_ONLY_AGENTS`). Single quotes are the only quoting allowed. Outside them, braces, glob characters (`{ } * ? [ ]`), and a word-initial `~` are rejected, so patterns must be quoted (`find . -name '*.sh'`). `git -C <dir>` is allowed only when `<dir>` is the repository root |
+ | `infra-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws`, terraform registry (7 read tools), aws-docs search/read, GitHub Actions read (3 tools) | terraform apply/destroy denied; deploy/rollback/smoke scripts denied to it; AWS MCP read-only |
+ | `deploy-engineer` | Read, Grep, Glob, Bash, Write, `mcp__aws-api__call_aws` | No Edit. Writes only `reports/deployments|releases/**`. Runs only mapped scripts in approved environments. Direct AWS mutations blocked |
+ | `experiment-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws` | Runs only `scripts/run-experiment.sh` with `experiments/` manifests |
+@@ -114,6 +114,8 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
+ 
+ Two rules apply to every agent and to the orchestrator, through hooks and deny rules. Secrets are never read. AWS is never mutated directly: the guard allows only read-only AWS CLI operations, and every change goes through Terraform (human-applied) or an approved script.
+ 
++guard-dangerous.sh also blocks two command shapes for every caller, because it cannot see what bash would make of them. First, a backslash directly before a newline or carriage return, in any quote state. Second, `$'` or `$"` anywhere in a multi-line command or in a command that contains `${`, because a `#` comment or heredoc body can hide ANSI-C quoting from the guard. Put such commands on one line, or use the Write tool for file content.
++
+ ## 6. Lifecycle routing
+ 
+ | Lifecycle stage | Trigger vocabulary | Owning agent | Gate, then follow-up |

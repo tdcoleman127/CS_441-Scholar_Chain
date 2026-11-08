@@ -1,0 +1,19 @@
+selection-version: er-gold-selection-v1
+seed: scholarchain-er-gold-v1
+inventory-sha256: 53e8a5decedf8682a580c328f934e649b4031beb783109ac59e0d72c60f12906
+inventory-mentions: 41
+candidate-pairs: 820
+selected-pairs: 48
+rule: every unordered pair of distinct inventory mentions; stratum = first matching rule in
+  the order below; within a stratum, equal canonical names first, then SHA-256(seed, pair
+  key) ascending; take the quota; rows ordered by the same hash.
+strata (name: selected / quota / available):
+  shared-researcher-id: 7 / 7 / 7
+  same-record-other-position: 5 / 5 / 45
+  identical-name-other-record: 9 / 9 / 46
+  homonym-number-suffix: 7 / 7 / 46
+  spelling-variant: 6 / 6 / 7
+  name-order: 1 / 3 / 1
+  initials-or-middle-name: 6 / 6 / 24
+  shared-name-token: 3 / 3 / 14
+  different-name: 4 / 4 / 630

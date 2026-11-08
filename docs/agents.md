@@ -104,7 +104,7 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
 | `rag-engineer` | Read, Grep, Glob, Write, Edit, Bash, aws-docs search/read | Ownership hook |
 | `service-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook |
 | `test-engineer` | Read, Grep, Glob, Write, Edit, Bash | Ownership hook limits Write and Edit to `tests/**`; Bash writes are fenced by instruction and review only |
-| `code-reviewer` | Read, Grep, Glob, Bash | No Write, Edit, or MCP. Bash is fenced to evidence commands by guard-dangerous.sh (`READ_ONLY_AGENTS`) |
+| `code-reviewer` | Read, Grep, Glob, Bash | No Write, Edit, or MCP. Bash is fenced to evidence commands by guard-dangerous.sh (`READ_ONLY_AGENTS`). Single quotes are the only quoting allowed. Outside them, braces, glob characters (`{ } * ? [ ]`), and a word-initial `~` (including right after an unspaced `|`) are rejected, so patterns must be quoted (`find . -name '*.sh'`). `git -C <dir>` is allowed only when `<dir>` is the repository root and contains no `..` path segment (the root check is lexical, so `sub/..` through a symlink or junction is refused) |
 | `infra-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws`, terraform registry (7 read tools), aws-docs search/read, GitHub Actions read (3 tools) | terraform apply/destroy denied; deploy/rollback/smoke scripts denied to it; AWS MCP read-only |
 | `deploy-engineer` | Read, Grep, Glob, Bash, Write, `mcp__aws-api__call_aws` | No Edit. Writes only `reports/deployments|releases/**`. Runs only mapped scripts in approved environments. Direct AWS mutations blocked |
 | `experiment-engineer` | Read, Grep, Glob, Write, Edit, Bash, `mcp__aws-api__call_aws` | Runs only `scripts/run-experiment.sh` with `experiments/` manifests |
@@ -113,6 +113,8 @@ Every agent file has an explicit `tools:` line. Enforcement layers, strongest fi
 | `dependency-updater` | Read, Grep, Glob, Edit, Bash, WebSearch, WebFetch, GitHub releases read (2 tools) | No Write. The ownership hook lets it Edit only version values in `project/Versions.scala` (section 4, ledger value check) and blocks every other path. Bash writes are fenced by instruction and review only |
 
 Two rules apply to every agent and to the orchestrator, through hooks and deny rules. Secrets are never read. AWS is never mutated directly: the guard allows only read-only AWS CLI operations, and every change goes through Terraform (human-applied) or an approved script.
+
+guard-dangerous.sh also blocks two command shapes for every caller, because it cannot see what bash would make of them. First, a backslash directly before a newline or carriage return, in any quote state. Second, `$'` or `$"` anywhere, even inside quotes, in a command that is multi-line or contains `${`, `$(` (which covers `$((`), a backtick, `$[`, `<(`, or `>(`. A `#` comment, a heredoc body, or the fresh quoting context inside a substitution can hide ANSI-C quoting from the guard. So `grep -n 'foo$' $(git ls-files)` is blocked. Run the substitution as a separate command, anchor without a trailing `$` (`grep -nx '.*foo'`), or use the Write tool for file content.
 
 ## 6. Lifecycle routing
 

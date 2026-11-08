@@ -63,7 +63,8 @@ final case class LoadResult(
     labeled: List[LabeledPair],
     skippedUnlabeled: Int,
     skippedUnsure: Int,
-    rejectedLines: List[String]
+    rejectedLines: List[String],
+    skippedUntraced: Int = 0
 )
 
 final case class SweepRow(accept: Double, reject: Double, overall: Confusion)
@@ -117,6 +118,18 @@ object Evaluator:
             case _ => acc.copy(skippedUnlabeled = acc.skippedUnlabeled + 1)
     }
 
+  /**
+   * Reads a filled gold-set labeling worksheet (CSV, see [[GoldWorksheet]]) and decides each row
+   * with `policy`. `same` / `different` rows with a labeler count; `unsure`, blank, and untraced
+   * rows are counted and skipped.
+   */
+  def loadWorksheet(
+      path: Path,
+      policy: ScoringPolicy,
+      defaultLabeler: Option[String] = None
+  ): GoldWorksheet.Loaded =
+    GoldWorksheet.load(path, policy, defaultLabeler)
+
   /** Status under alternative thresholds: only probabilistic-path pairs with a score move. */
   def restatus(item: ReviewItem, accept: Double, reject: Double): ResolutionStatus =
     val probabilistic = item.path == MatchPath.Probabilistic ||
@@ -152,7 +165,7 @@ object Evaluator:
   private def fmt(o: Option[Double]): String          = o.fold("n/a")(v => f"$v%.3f")
   private def ci(o: Option[(Double, Double)]): String = o.fold("n/a")((a, b) => f"[$a%.3f, $b%.3f]")
 
-  private def row(name: String, c: Confusion): String =
+  def row(name: String, c: Confusion): String =
     f"$name%-16s n=${c.total}%4d TP=${c.tp}%3d FP=${c.fp}%3d TN=${c.tn}%3d FN=${c.fn}%3d " +
       f"U+=${c.undecidedPos}%3d U-=${c.undecidedNeg}%3d P=${fmt(c.precision)} ${ci(wilson(c.tp, c.tp + c.fp))} " +
       f"R=${fmt(c.recall)} ${ci(wilson(c.tp, c.positives))} F1=${fmt(c.f1)} " +
@@ -162,7 +175,8 @@ object Evaluator:
     val sb = new StringBuilder
     sb.append(s"ER evaluation, policy ${e.policyVersion}, features ${Features.SpecVersion}\n")
     sb.append(s"labeled=${e.load.labeled.size} unlabeled=${e.load.skippedUnlabeled} " +
-      s"unsure=${e.load.skippedUnsure} malformed=${e.load.rejectedLines.size}\n")
+      s"unsure=${e.load.skippedUnsure} untraced=${e.load.skippedUntraced} " +
+      s"malformed=${e.load.rejectedLines.size}\n")
     e.load.rejectedLines.foreach(l => sb.append(s"  malformed $l\n"))
     sb.append(
       "Confusion by match path (U+/U- = unresolved or conflict, labeled match / non-match; " +

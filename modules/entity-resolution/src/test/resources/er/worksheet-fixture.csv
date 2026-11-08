@@ -1,0 +1,11 @@
+pair_id,stratum,a_mention_id,a_source_dataset,a_source_record_id,a_role,a_name,a_title,a_year,a_venue,a_coauthors,a_researcher_ids,a_work_ids,a_context,b_mention_id,b_source_dataset,b_source_record_id,b_role,b_name,b_title,b_year,b_venue,b_coauthors,b_researcher_ids,b_work_ids,b_context,label,labeler,notes
+F01,s-id,fx:a1,dblp,fixture/a1,author,Josiah Carberry,Synthetic Title One,2024,V,X Person,orcid:0000-0002-1825-0097,doi:10.5555/fx.1,SYNTHETIC,fx:b1,openalex,fixture/b1,author,Josiah Carberry,Synthetic Title One,2024,,X Person,orcid:0000-0002-1825-0097; openalex:A1,doi:10.5555/fx.1,SYNTHETIC,same,fixture-labeler,
+F02,s-initials,fx:a2,dblp,fixture/a2,author,Ada Sample,Synthetic Title Two,2020,V,,,,SYNTHETIC,fx:b2,dblp,fixture/b2,author,Bea Sample,Synthetic Title Two,2020,V,,,,SYNTHETIC,Different,fixture-labeler,
+F03,s-name,fx:a3,dblp,fixture/a3,author,Jane Roe,"On ""Quoted"", Titles",2020,V,John Doe; Mary Major,,,"SYNTHETIC, quoted",fx:b3,crossref,fixture/b3,author,Jane Roe,Another Title,2021,V,John Doe; Mary Major,,,SYNTHETIC,SAME,fixture-labeler,"note, with comma"
+F04,s-name,fx:a4,dblp,fixture/a4,author,Jane Roe,Title Four,2020,V,John Doe; Mary Major,,,SYNTHETIC,fx:b4,dblp,fixture/b4,author,Jane Roe,Title Four B,2020,V,John Doe; Mary Major,,,SYNTHETIC,different,fixture-labeler,
+F05,s-initials,fx:a5,dblp,fixture/a5,author,J. Roe,Shared Title,2020,V,John Doe; Ann Lee,,,SYNTHETIC,fx:b5,dblp,fixture/b5,author,Jane Roe,Shared Title,2020,V,John Doe; Bob Kay,,,SYNTHETIC,same,fixture-labeler,
+F06,s-name,fx:a6,dblp,fixture/a6,author,Pat Doe,T,2020,V,,,,SYNTHETIC,fx:b6,dblp,fixture/b6,author,Pat Doe,T,2021,V,,,,SYNTHETIC,unsure,fixture-labeler,
+F07,s-name,fx:a7,dblp,fixture/a7,author,Pat Doe,T,2020,V,,,,SYNTHETIC,fx:b7,dblp,fixture/b7,author,Pat Doe,T,2021,V,,,,SYNTHETIC,,,
+F08,s-id,fx:a8,dblp,fixture/a8,author,Josiah Carberry,T8,2024,V,,orcid:0000-0002-1825-0097,,SYNTHETIC,fx:b8,crossref,fixture/b8,author,Josiah Carberry,T8,2024,V,,orcid:0000-0002-1825-0097,,SYNTHETIC,same,,
+F09,s-name,fx:a9,dblp,fixture/a9,author,Pat Doe,T,2020,V,,,,SYNTHETIC,fx:b9,dblp,fixture/b9,author,Pat Doe,T,2021,V,,,,SYNTHETIC,maybe,fixture-labeler,
+F10,s-name,fx:a10,dblp,fixture/a10,author,Pat Doe,T,20x4,V,,,,SYNTHETIC,fx:b10,dblp,fixture/b10,author,Pat Doe,T,2021,V,,,,SYNTHETIC,different,fixture-labeler,
