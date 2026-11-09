@@ -236,3 +236,40 @@ Baseline: HEAD 313073f (repair-02b applied). After the commit, the orchestrator 
     - The spec's error analysis needs at least 10 false positives and 10 false negatives; this set has 3 and 7.
     - **er-policy-v2 stays UNCALIBRATED, with thresholds unchanged** (accept 0.85, reject 0.55). Tuning on this set would mean fitting synthetic data.
   - **R-05-4 status: pilot done; the tooling works end to end.** The real gold set is still open: dataset-engineer pulls a bounded real DBLP and enrichment sample, entity-resolution-engineer builds a review queue of at least 200 pairs (researcher pairs, plus work pairs if implemented), and the human labels it. Deterministic-path recall and the exact-id false positive go to entity-resolution-engineer, to be re-checked on the real set.
+
+## 2026-11-08 follow-up 4: post-restart verification and review closure
+
+The human ratified repair-03c (decisions 1-7, `phase-00-09-human-gate.md`), applied `repair-03c.patch`, filled in the phase-02 accepted hash, committed `24a5f20`, set the GitHub PAT, and restarted Claude Code. The orchestrator then verified the following:
+
+- **Live hook:**
+  - `.claude/hooks/guard-dangerous.sh` line 36 reads `SC_MAX_INPUT_BYTES=65535`.
+  - `bash -n` passes on all 6 hooks.
+  - The validator reports RESULT: PASS, including the floor checks: terraform apply/destroy and force pushes are blocked, and the formatter always exits 0.
+- **Live R3-LENCAP boundary.** The live hook was run directly under an outer `timeout -k 2 40`, with exact-size JSON inputs that have no trailing newline.
+
+  | Input size | Exit | Time | Result |
+  |---|---|---|---|
+  | 65,535 bytes | 0 | 2.9 s | ALLOW: reaches the inner check, no deadlock |
+  | 65,536 bytes | 2 | 0.18 s | BLOCKED: "the hook input is 65536 bytes, over the 65535-byte limit ... (rule R3-LENCAP)" |
+
+- **MCP servers:**
+
+  | Server | Status | Evidence |
+  |---|---|---|
+  | github | CONNECTED | `get_me` returned the user `tdcoleman127`. `list_commits` read this repository, whose remote head is `313073f`, so `24a5f20` is not pushed yet. |
+  | aws-docs | CONNECTED | A documentation search returned the S3 Vectors "Limitations and restrictions" page. |
+  | terraform | CONNECTED | The registry lookup returned hashicorp/aws 6.72.0. |
+  | aws-api | Connects, but has no credentials | `aws sts get-caller-identity` failed with "The config profile (scholarchain-readonly) could not be found". The human still has to create the read-only profile before Phase 12. The server also reports that it is entering end of development, with a migration guide to the AWS MCP Server. Moving would be a factory-engineer amendment to `.mcp.json`. |
+
+- **Housekeeping:**
+  - `phase-02/human-gate.md` line 21 now records `313bb4bd025bfd86348bbbff19bb9afb9eec42f8`.
+  - The leftover repair-03b probe processes are gone: none of MSYS pids 6747, 6757, 6759, 6778, 13105, 13110 is running.
+- **Review status: section 3.6 items 1-3 are done.**
+  1. Guard repairs: R1, R2, R3, and R4 are all closed.
+  2. MCP: github, aws-docs, and terraform are connected; aws-api is waiting on the profile.
+  3. Gold set: the pilot is labeled and evaluated.
+- **Still open, and not blocking Phase 10:**
+  - the real gold set of at least 200 pairs (R-05-4);
+  - before Phase 12: R-06a-9, R-06a-1, R-09-2, R-09-3, R-06b-5, R-06b-1, the AWS fact checks (R-07-1, R-08-8, R-09-8, now possible through aws-docs), and the aws-api profile;
+  - the MINOR items in `phase-00-09-minor-fixes.md`.
+- **Carried into the Phase 10 work order:** R-00-1, R-09-5, R-09-1.
