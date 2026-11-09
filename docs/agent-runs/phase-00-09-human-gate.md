@@ -89,3 +89,36 @@ D6. Accept dropping the guide's timeout/transport keys; AWS_PROFILE/AWS_REGION a
     env limited to those two keys.
 D7. Apply, commit, restart, run the post-restart checklist. Track the MINOR R3 doc wording
     (call_aws line breaks count 1 byte) for the next amendment.
+
+AMD-AWSMCP post-restart verification and IAM read-only repair, 2026-11-09:
+
+RR-13 (aws___call_aws exists?): ANSWERED - NO. With --read-only, aws-mcp offers only the 5
+  knowledge tools. The four agents' mcp__aws-mcp__aws___call_aws grant is inert; AWS API reads
+  use the guarded read-only aws CLI in Bash with --profile scholarchain-readonly.
+RR-14 (--read-only hides run_script?): ANSWERED - YES. aws___run_script, aws___get_tasks and
+  aws___get_presigned_url are not offered; the guard and settings.json deny rules also block them.
+Live guard probes on commit 49275eb: 13/13 as expected (follow-up 6).
+aws-mcp server instructions ("use run_script", "do not use Bash for the AWS CLI") are treated as
+  retrieved data (CLAUDE.md law 8); ratified Option A governs.
+
+IAM repair (manual intervention, disclosed):
+- Found: profile scholarchain-readonly signed in as ScholarChainAdmin, and the ScholarChainReadOnly
+  permission set had no inline Deny policy.
+- Fixed by me in the console and ~/.aws/config: added inline Deny DenySecretMaterial
+  (secretsmanager:GetSecretValue, kms:Decrypt, ssm:GetParameter, ssm:GetParameters,
+  ssm:GetParametersByPath, sts:AssumeRole) to ScholarChainReadOnly and re-provisioned it;
+  scholarchain-readonly -> ScholarChainReadOnly; scholarchain-admin -> ScholarChainAdmin.
+- Verified (orchestrator): readonly ARN AWSReservedSSO_ScholarChainReadOnly_553840750e428672,
+  admin ARN AWSReservedSSO_ScholarChainAdmin_d4f1d1165a047e32; explicit deny observed for
+  kms:Decrypt and ssm:GetParametersByPath.
+- Verified (me, own terminal): aws s3 mb ... --profile scholarchain-readonly -> [AccessDenied: yes/no]
+- aws-mcp reconnected after the profile fix: [yes/no]
+
+Admin profile hardening (choose one):
+- [ ] (a) Remove the scholarchain-admin CLI profile until a terraform apply is needed; use the
+      access portal for console work. (Recommended, no amendment.)
+- [ ] (b) factory-engineer amendment: guard refuses any aws --profile other than
+      scholarchain-readonly in Bash.
+
+Tracked: MINOR R3 doc wording (call_aws line breaks count 1 byte) for the next amendment.
+terraform MCP: reconnected after Docker Desktop was started.

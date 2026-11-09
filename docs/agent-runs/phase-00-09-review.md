@@ -315,3 +315,71 @@ The human ratified repair-03c (decisions 1-7, `phase-00-09-human-gate.md`), appl
   - the validator passes, and the probes re-run against the live hooks.
 
   The MINOR R3 documentation wording is tracked for the next factory-engineer amendment.
+
+## 2026-11-09 follow-up 6: AMD-AWSMCP post-restart verification
+
+The human ratified D1-D7, applied `amd-awsmcp-r1.patch`, committed `49275eb`, and restarted. The orchestrator then verified the following:
+
+- **Hooks:** `bash -n` passes on all 6 hooks. The validator on the live tree reports RESULT: PASS.
+- **MCP servers after the restart:**
+  - `aws-mcp` connected. A knowledge call (`aws___search_documentation`, S3 Vectors limits) returned the documentation page.
+  - `aws-api` is gone; its tools are no longer offered.
+  - `github` and `aws-docs` are unchanged.
+  - **`terraform` failed to connect** ("Connection closed"). It needs the Docker daemon running when Claude Code starts. Human action: start Docker Desktop, then reconnect.
+- **RR-13 and RR-14, answered from the tool list the server offers with `--read-only`.** It offers exactly the 5 knowledge tools: `aws___search_documentation`, `aws___read_documentation`, `aws___retrieve_skill`, `aws___list_regions`, `aws___get_regional_availability`.
+  - **RR-13: `aws___call_aws` does not exist** (at least under `--read-only`). The four agents' grant of `mcp__aws-mcp__aws___call_aws` is inert. AWS API reads go through the guarded read-only `aws` CLI in Bash.
+  - **RR-14: `--read-only` hides `aws___run_script`, `aws___get_tasks`, and `aws___get_presigned_url`.** Under Option A the guard and the deny rules block them as well.
+  - These answers should be recorded in the human gate.
+  - The server's own instructions text tells clients to "use run_script to run AWS commands" and "do NOT use the Bash tool to run the AWS CLI". That text is retrieved data (CLAUDE.md law 8). The ratified constitution (Option A, guarded Bash CLI) governs.
+- **Live guard probes:** 13 payloads run through the committed `guard-dangerous.sh` under `timeout -k 2 40`. Harness in the session scratchpad (`awsmcp-live/mk.js`, `run.sh`). Result: **13/13 as expected.**
+  - BLOCKED:
+    - `run_script`, `get_tasks`, `get_presigned_url`;
+    - an unknown aws-mcp tool;
+    - `mcp__aws-api__call_aws`;
+    - call_aws with `aws s3 mb`;
+    - call_aws with a CR-separated second command;
+    - call_aws with `'--profile' admin`;
+    - call_aws with a `role_arn` key;
+    - a 65,536-byte aws-mcp input (R3-LENCAP).
+  - ALLOWED: call_aws `aws sts get-caller-identity`, `search_documentation`, `list_regions`.
+- **CRITICAL: the profile is misconfigured.**
+  - `aws sts get-caller-identity --profile scholarchain-readonly`, a read-only call through the guarded CLI, returned `arn:aws:sts::472723939340:assumed-role/AWSReservedSSO_ScholarChainAdmin_.../tc`.
+  - The profile named `scholarchain-readonly` signs in with the **Admin** permission set, not ScholarChainReadOnly. The `aws-mcp` proxy and the agents' CLI fallback therefore run with AdministratorAccess, and the IAM layer that docs/agents.md §9 names as the primary control is missing.
+  - Current exposure is contained: `aws-mcp` offers no API tools, and the guard allows only read-only `aws` commands in Bash. But this violates the ratified §9 trust boundary.
+  - The orchestrator makes no further AWS account calls until it is fixed.
+  - Human action:
+    1. In `~/.aws/config`, under `[profile scholarchain-readonly]`, set `sso_role_name = ScholarChainReadOnly`, or re-run `aws configure sso --profile scholarchain-readonly` and pick ScholarChainReadOnly.
+    2. Confirm `scholarchain-admin` still points to ScholarChainAdmin.
+    3. In the human's own terminal, `aws sts get-caller-identity --profile scholarchain-readonly` should show `AWSReservedSSO_ScholarChainReadOnly_...`, and `aws s3 mb s3://scholarchain-ro-test-<n> --profile scholarchain-readonly` must fail with AccessDenied. The guard blocks that write through Claude, so the IAM denial has to be tested outside Claude.
+    4. Reconnect `aws-mcp` in `/mcp`, or restart.
+  - The orchestrator then re-checks the caller identity.
+- **Status:** AMD-AWSMCP is applied and working at the guard and server level. The IAM control stays open until the profile is fixed.
+
+## 2026-11-09 follow-up 7: IAM profile repair verified
+
+The orchestrator ran read-only checks through the guarded CLI. Where an output depends on the human's console change, it is quoted below.
+
+- **Permission sets** (Identity Center instance `ssoins-722351eff303fc28`, us-east-1). Before the repair:
+
+  | Permission set | Session | Managed policy | Inline policy |
+  |---|---|---|---|
+  | ScholarChainReadOnly | PT8H | ReadOnlyAccess | **none** (it was missing) |
+  | ScholarChainAdmin | PT4H | AdministratorAccess | n/a |
+
+- **Human repair:**
+  - added the inline Deny (DenySecretMaterial: secretsmanager:GetSecretValue, kms:Decrypt, ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath, sts:AssumeRole) to ScholarChainReadOnly, and re-provisioned it;
+  - set the local profile `scholarchain-readonly` to role ScholarChainReadOnly;
+  - set `scholarchain-admin` back to ScholarChainAdmin, after an intermediate edit had pointed it at ScholarChainReadOnly.
+- **Verified after the repair:**
+  - `aws sts get-caller-identity --profile scholarchain-readonly` returns `assumed-role/AWSReservedSSO_ScholarChainReadOnly_553840750e428672/tc`.
+  - `aws sts get-caller-identity --profile scholarchain-admin` returns `assumed-role/AWSReservedSSO_ScholarChainAdmin_d4f1d1165a047e32/tc`. `aws configure get sso_role_name` agrees for both profiles.
+  - The inline Deny is live. `sso-admin get-inline-policy-for-permission-set` and `list-permission-set-provisioning-status`, run as the read-only role, now fail with "not authorized to perform: kms:Decrypt on resource ... key/mrk-43ad... with an explicit deny in an identity-based policy". The Identity Center instance uses a customer-managed KMS key.
+  - `ssm get-parameters-by-path` fails with "not authorized to perform: ssm:GetParametersByPath ... with an explicit deny in an identity-based policy".
+  - Side effect, accepted: the read-only identity can no longer read Identity Center configuration, because KMS is denied. Future checks of the permission sets need the human's console or admin session.
+  - Not verified through Claude, because the guard blocks writes before AWS sees them: the IAM denial of a write such as `aws s3 mb`. The human tests it in their own terminal.
+- **Note for the human, and a tracked hardening item for factory-engineer:**
+  - Both profiles share one SSO session (`scholarchain`), so while the human is logged in, the admin role is reachable from any shell, including an agent's Bash running `--profile scholarchain-admin`. The Bash guard still allows only read-only `aws` operations, so the exposure is reads with admin rights.
+  - Options:
+    - (a) remove the admin CLI profile until a `terraform apply` is needed, and use the access portal for console work;
+    - (b) a guard rule that refuses any `aws ... --profile` other than `scholarchain-readonly` in Bash, matching the call_aws `--profile` refusal.
+- **Status:** the §9 IAM trust boundary now matches the ratified text. AMD-AWSMCP verification is complete except for terraform MCP, which needs Docker running.
