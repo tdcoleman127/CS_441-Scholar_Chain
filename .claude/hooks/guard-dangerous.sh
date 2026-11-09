@@ -18,6 +18,43 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/common.sh"
 SC_HOOK="guard-dangerous"
 
+# ---- R3: bounded run time, fail closed (repair-03; docs/agents.md section 5, rules R3-LENCAP and
+# R3-DEADLINE). Claude Code treats a hook that outlives its settings.json timeout (20 s) as a
+# non-blocking error and runs the tool call unchecked. Two layers keep this guard inside that budget:
+#   1. Size caps, checked before any parsing: the hook input (SC_MAX_INPUT_BYTES) right here, and the
+#      command string (SC_MAX_CMD_BYTES, Bash command or AWS MCP cli_command) as soon as it is read.
+#      Bytes are counted as read; on Windows sc_field returns line breaks as CR LF (2 bytes each).
+#   2. A deadline: the whole check runs in a child process under GNU timeout. A child that has not
+#      decided within SC_DEADLINE_S seconds is killed (SIGKILL SC_KILL_AFTER_S seconds later if it
+#      ignores SIGTERM) and the command is blocked. Worst case about 15 + 1 s plus start-up, under the 20 s budget.
+# Only exit 0 (allow, possibly with an "ask" decision on stdout) and exit 2 (block) from the child
+# pass through. Every other status, including the deadline, blocks.
+# SC_MAX_INPUT_BYTES is 65,535, not 65,536 (repair-03c): the wrapper below feeds the child with a
+# here-string, which appends one newline, and on bash 5.2.37 (Git for Windows) a here-string over
+# 65,536 bytes deadlocks in this outer process before timeout starts, so the deadline cannot catch it.
+# 65,535 bytes of input plus the newline is a 65,536-byte here-string, the largest size measured to work.
+SC_MAX_INPUT_BYTES=65535
+SC_MAX_CMD_BYTES=2048
+SC_DEADLINE_S=15
+SC_KILL_AFTER_S=1
+# sc_len <string>: set SC_LEN to its length in bytes, without a subprocess.
+sc_len() { local LC_ALL=C; SC_LEN=${#1}; }
+SC_INPUT="$(cat)"
+sc_len "$SC_INPUT"
+(( SC_LEN <= SC_MAX_INPUT_BYTES )) || sc_block "the hook input is $SC_LEN bytes, over the $SC_MAX_INPUT_BYTES-byte limit this guard can check in time (rule R3-LENCAP), so it is blocked (fail closed). Shorten the command or split it into several commands. Put file content in the Write tool, not in Bash."
+if [ "${1:-}" != "--sc-inner" ]; then
+  SC_TIMEOUT_BIN=""
+  for c in /usr/bin/timeout /bin/timeout; do [ -x "$c" ] && { SC_TIMEOUT_BIN="$c"; break; }; done
+  [ -n "$SC_TIMEOUT_BIN" ] || sc_block "GNU timeout (/usr/bin/timeout) was not found, so this guard cannot bound its own run time (rule R3-DEADLINE). Commands are blocked (fail closed) until coreutils timeout is installed and Claude Code is restarted."
+  "$SC_TIMEOUT_BIN" -k "$SC_KILL_AFTER_S" "$SC_DEADLINE_S" "$BASH" "${BASH_SOURCE[0]}" --sc-inner <<< "$SC_INPUT"
+  rc=$?
+  case "$rc" in
+    0|2) exit "$rc" ;;
+    124|137) sc_block "this guard could not finish checking the command within $SC_DEADLINE_S s (rule R3-DEADLINE), so it is blocked (fail closed). Each ';', '|', '&', '(', ')', backtick, and line break adds a segment, even inside quotes, and commands with many segments or words take longest. Split it into shorter commands, put file content in the Write tool, and retry once if the machine is heavily loaded." ;;
+    *) sc_block "the guard check ended with unexpected status $rc, so the command is blocked (fail closed)." ;;
+  esac
+fi
+
 # ---- Policy tables (mirrors docs/agents.md sections 5 and 7) --------------------------------
 ROSTER="factory-engineer build-engineer domain-engineer dataset-engineer hadoop-engineer entity-resolution-engineer spark-engineer storage-engineer rag-engineer service-engineer test-engineer code-reviewer infra-engineer deploy-engineer experiment-engineer documentation-engineer incident-responder dependency-updater"
 READ_ONLY_AGENTS="code-reviewer"
@@ -53,7 +90,6 @@ dataset_script_runners() {
 }
 # ---------------------------------------------------------------------------------------------
 
-SC_INPUT="$(cat)"
 export SC_INPUT
 SC_PY="$(sc_python)" || sc_block "no working Python 3 interpreter (python3, python, or py) was found, so the guard cannot inspect this command. Install Python 3 and restart Claude Code. Until then, commands are blocked (fail closed)."
 tool="$(sc_field tool_name)" || sc_block "the hook input is not valid JSON (fail closed)."
@@ -63,6 +99,8 @@ case "$tool" in
   *)                      exit 0 ;;
 esac
 [ -n "$raw" ] || exit 0
+sc_len "$raw"
+(( SC_LEN <= SC_MAX_CMD_BYTES )) || sc_block "the command is $SC_LEN bytes, over the $SC_MAX_CMD_BYTES-byte limit this guard can check within its time budget (rule R3-LENCAP), so it is blocked (fail closed) for every caller. Split it into several shorter commands. Put file content (commit messages, data, scripts) in a file with the Write tool and pass the file name, for example 'git commit -F <file>'."
 
 agent_id="$(sc_field agent_id)"
 agent_type="$(sc_field agent_type)"

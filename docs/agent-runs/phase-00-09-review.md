@@ -144,3 +144,95 @@ Recorded by the orchestrator while acting on section 3.6.
   - Policy er-policy-v2 unchanged and still UNCALIBRATED. Thresholds unchanged (accept 0.85, reject 0.55).
   - Limits: all sample records are synthetic, with only 41 usable mentions and one valid ORCID (Josiah Carberry). 48 pairs can start calibration but not finish it; a larger set needs real sample data from dataset-engineer. Metrics will be stratum-weighted, not population rates.
   - Human next steps: (1) label the worksheet in place (same / different / unsure, UTF-8); (2) run `sbt "entityResolution/runMain edu.uic.cs441.scholarchain.er.WorksheetEvalMain modules/entity-resolution/gold/v1/labeling-worksheet-v1.csv --labeler <name>"` (runMain is blocked for agents); (3) commit the labeled worksheet. The diff still needs a code-reviewer pass. The labels themselves are a human task (docs/agents.md section 10; a set labeled by the system it evaluates would be circular).
+
+## 2026-11-07 follow-up 2: repair-03 (R3, guard timeout fail-open)
+
+Baseline: HEAD 313073f (repair-02b applied). After the commit, the orchestrator re-verified: the repair-02b patch sha256 matches the commit message, `git apply --check -R` OK, the commit's constitutional diff is identical to the patch, `bash -n` OK on 6 hooks, validator PASS, `sbt check` [success] (174 s).
+
+- **repair-03 proposal: COMPLETE, not applied (factory-engineer; about 65 minutes against a 30-minute time box, mostly probe wall time).**
+  - Evidence: `phase-00-09-evidence/repair-03/repair-03.patch` (sha256 `90bd6690cf01b9fbef5d483d1bd72d734d124bb92184824740923f00a46a087c`) and `repair-03-probes.txt` (sha256 `8f2c97d53de7b3cbe3838adb4901f3eb37215c2fe29d3d2c98b7d28561c8a5c2`). The orchestrator re-verified both hashes after copying, `git apply --check -v` OK on 313073f, the live constitutional files unchanged, and GNU `timeout` 8.32 present at `/usr/bin/timeout`.
+  - R3 is broader than reported: guard run time grows with the number of segments, not only with length. On the baseline, a 59-byte 12-segment `;` command took 18.5 s, a 119-byte one 38.2 s, and a 4 KB word list 22.3 s, so short commands already fail open.
+  - Fix: rule R3-LENCAP (block hook input over 65,536 bytes; block a Bash `command` or AWS MCP `cli_command` over 2,048 bytes, before parsing) and rule R3-DEADLINE (the check runs as a child under `timeout -k 1 15`; only exit 0 or 2 pass through; a timeout, any other status, or a missing `timeout` binary blocks). New residual RR-12 (deadline blocks depend on load). settings.json and CLAUDE.md unchanged.
+  - Results on the patched copy: new R3 probes 21/21, repair-02 54/54, repair-02b 37/37, phase-03 Bash regression 146/146; `bash -n` OK; validator PASS (92); mode 100755 kept. Deadline-path probes blocked at 15.2 s.
+  - Longest legitimate command measured: 254 bytes. Near-deadline legitimate commands: six-command `&&` chains (L06/L08) at 12.5 s patched, 15.5-16.3 s on the baseline run.
+  - Logged, not fixed: R3-PERF (about 1-1.5 s per segment; about 4 s floor from Python start-up), R3-OWN (guard-ownership.sh linear in payload size; about 8 MiB or more to reach 20 s), R3-STOP (verify-tests-ran.sh cost grows with changed files).
+  - Privilege delta: NARROWED for every caller (length caps, deadline, hard dependency on GNU `timeout`). Nothing widened. No roster, fence, ownership, or floor change.
+- **code-reviewer on repair-03: APPROVE (2 MINOR, non-blocking).**
+  - No `--sc-inner` bypass (settings.json passes no arguments; hook input reaches the child only on stdin). Exit-code handling is sound (`set -uo pipefail`, no `-e`; ask JSON passes through on exit 0; a kill after printing ask gives 124/137 and blocks). The outer process does no Python and no input-dependent work before the fork. Byte counting confirmed in bytes (R3-11). Spot-check of R3-01, R3-02, R3-07/07b, R3-12, R3-14, R3-18 and phase-03 rows A01, A07, A08, D05, R1-09: all match.
+  - F1 MINOR: the docs' definition of a "segment" (`;`, `|`, `&&`, `||`, newlines) does not match the hook's `tr ';|&()\`'` split, which ignores quoting, counts `&&`/`||` twice, and also counts `(`, `)`, and backticks. Example: `grep -rnE 'a|b|...|l' modules | wc -l` is 13 segments to the hook. Usability only; fail closed.
+  - F2 MINOR: no probe exercises the 65,536-byte input cap (65,536 allowed through / 65,537 blocked).
+  - Risks noted, no verified failure input: about 4 s of margin outside the deadline under extreme load; routine `&&` chains, parallel Bash calls, or a background sbt may cause intermittent deadline blocks; the 2,048-byte cap blocks long heredoc commits and long AWS MCP queries (use the Write tool and `git commit -F`); a host without GNU `timeout` blocks every call; locale restoration after `local LC_ALL=C` not confirmed (no observed decision change).
+  - Coverage limits stated by the reviewer: it could not apply the patch, run `bash -n` on the patched hook, re-run probes, or hash the evidence (the orchestrator did).
+  - Repair loops used: 0. Next gate: human ratification of factory-engineer's decisions 1-7 (caps, 15 s deadline Option A or a new Option B proposal with a 30 s hook timeout and 24 s deadline, `timeout` dependency, privilege narrowing, RR-12 and R3-PERF, R3-OWN and R3-STOP tracking, then apply, commit, restart). F1 and F2 may be fixed in a repair-03b before ratification or tracked as minor items.
+- **repair-03b: BLOCKED-ON (factory-engineer, 2026-11-08). The new F2 boundary probe found a fail-open defect in repair-03; do not ratify `repair-03.patch`.**
+  - Evidence (orchestrator re-verified hashes after copying): `phase-00-09-evidence/repair-03/repair-03b-DRAFT-not-ready.patch` (sha256 `300a5f68224e77b3b83da811d287093bfd982e1c661e27d3546716f09cdb29a0`, combined 03 + 03b, still contains the defect) and `repair-03b-probes.txt` (sha256 `795047b6d2d12f688a2f473d0581c4829cc7d8f80d29f25f35f48a5552b908b5`; see sections 2.2, 2.5, and 3).
+  - Defect: hook input of exactly 65,536 bytes passes R3-LENCAP. The outer guard then passes it to the child with `<<< "$SC_INPUT"`, which appends a newline (65,537 bytes). Bash 5.2.37 (Git for Windows) here-strings over 65,536 bytes deadlock in the outer process before `timeout` starts, so R3-DEADLINE never runs. Claude Code would time the hook out at 20 s and run the call unchecked. A padded `description` field can hit this deliberately. Measured: 65,535 allowed (5.1 s), 65,536 hung (R3B-01 still running at 60 s; R3B-03 instrumented shows no timeout process started), 65,537 blocked (0.2 s). The live hook (313073f) has no here-string and was not probed at this size.
+  - code-reviewer's repair-03 APPROVE did not catch this: its F2 finding was that this exact boundary was untested.
+  - Done in the draft: F1 docs paragraph rewritten to match the hook's character-level segment count (checked with the hook's own split pipeline, 13/13); "allow or ask" wording; RR-12 margin clause; the 124/137 block message text updated (string only). Optional probes R3B-07 (missing timeout) and R3B-08 (child exit 3) both block.
+  - Hung probe processes left running (background task b6leaqi3c; Windows pids 110964, 9752, 4244). factory-engineer's attempts to stop them were denied by the permission classifier; the orchestrator did not stop them on its behalf. Human action.
+  - Next gate: choose the fix (a: `SC_MAX_INPUT_BYTES=65535`; b: pipe the input to the child instead of a here-string), repair-03c, then a fresh code-reviewer pass.
+- **Human decision (2026-11-08): fix option (a), `SC_MAX_INPUT_BYTES=65535`, "for now". Option (b) is recorded as future hardening.**
+- **repair-03c proposal: COMPLETE, not applied (factory-engineer; about 35 minutes against a 30-minute time box).**
+  - Evidence: `phase-00-09-evidence/repair-03/repair-03c.patch` (sha256 `adba885751aeac1735ad860419904512cb6a8d185558526519f33d24ade636bc`; combined 03 + 03b + 03c against 313073f; **supersedes `repair-03.patch` and the 03b draft, so apply only this one**) and `repair-03c-probes.txt` (sha256 `103b8de5a1f5ceb1f71f31ef02cb2b9e07e7a6145dc9d30953569eb77d684976`). After copying, the orchestrator re-verified both hashes, ran `git apply --check -v` on the live tree (both files OK), and confirmed the live constitutional files are unchanged.
+  - Change from the 03b draft: the hook cap goes from 65536 to 65535, with a comment. The docs/agents.md section 5 paragraph now says the cap is 65,535 bytes and gives the reason: the here-string appends 1 byte, and on bash 5.2.37 here-strings over 65,536 bytes deadlock. It says the bound has no spare byte and depends on the bash build, and it names option (b) as future hardening.
+  - Probes, run on the patched copy with every hook run under an outer `timeout -k 2 40`:
+    - Boundary: 18/18. 65,534 and 65,535 bytes allowed in about 3.6 s; 65,536 and 65,537 bytes blocked in 0.2 s; UTF-8 counted in bytes; AWS MCP matcher covered; a missing `timeout` or a child exit 3 blocks.
+    - R3C-04: the 65,535-byte input reaches the child under the guard's own `timeout -k 1 15`, with no deadlock.
+    - Regression: R3 21/21, repair-02 54/54, repair-02b 37/37, phase-03 Bash 146/146.
+    - `bash -n` OK on 6 hooks; validator PASS (92); mode 100755 kept; round-trip apply equals the probed mirror.
+  - Privilege delta: NARROWED for every caller, 1 byte stricter than 03/03b. Nothing widened.
+  - factory-engineer observed a stray bash process running the LIVE hook (MSYS pid 46957, parent gone), likely Claude Code's own hook run on a long tool call. That fits R3 on the live hook. By the time the orchestrator checked, it had exited.
+- **code-reviewer on repair-03c: APPROVE, no findings.**
+  - The size check and the here-string use the same `SC_INPUT`, assigned once, so the largest possible here-string is 65,536 bytes, the measured safe size.
+  - Trailing newlines stripped by `$(cat)` are harmless, because the cap measures exactly what goes into the here-string (R3C-11, R3C-12).
+  - Byte counting is confirmed by R3C-14: 65,536 bytes of 2-byte UTF-8 was blocked.
+  - No Python and no parsing happen before the fork.
+  - The docs text matches the hook: values, rationale, F1 segment wording, the RR-12 margin of about 4 s, and option (b). F2 is addressed by R3C-02 to R3C-07.
+  - Floor intact: terraform apply and force push are blocked at and below the cap, and `.env` reads are blocked. Exit-code handling is sound.
+  - The reviewer confirmed the probed copy matches the patch hunks line for line.
+  - Risks noted, no failure input:
+    - Zero margin depending on the Git for Windows build. An update could lower the limit, and nothing re-tests this boundary automatically. Option (b) or an automated boundary check would fix it (owner factory-engineer).
+    - The pre-fork `$(cat)` read has no size limit, as on the live hook; inputs over about 65 KB were not probed.
+    - A native grandchild surviving the timeout kill could hold the pipes open; the harness would not detect it.
+  - Coverage limits stated by the reviewer: it could not hash, apply, run `bash -n`, or run probes, and it read only the pass totals for probes-file lines 300-509.
+  - Leftover hung repair-03b probe processes are still running (MSYS pids 6747, 6757, 6759, 6778, 13105, 13110). Human action.
+  - Repair loops used: 0. Next gate: human ratification of decisions 1-7 in the human gate:
+    1. caps of 65,535 input bytes and 2,048 command bytes;
+    2. a 15 + 1 s deadline under the existing 20 s hook timeout (Option A);
+    3. the `/usr/bin/timeout` dependency;
+    4. the narrowing for every caller;
+    5. RR-12, R3-PERF, and the zero-margin residual;
+    6. tracking R3-OWN, R3-STOP, and option (b);
+    7. apply `repair-03c.patch` only.
+
+    Then commit and restart. After the restart, the orchestrator re-verifies `bash -n`, the validator, and a live R3C-03/R3C-05 boundary spot-check.
+
+## 2026-11-08 follow-up 3: gold-set pilot (R-05-4)
+
+- **Labeling: done by the human (labeler TC), 48/48 pairs**, using a local side-by-side labeling page that the orchestrator wrote in the session scratchpad. The page is not in the repository. A Node round-trip check on the real worksheet showed 0 changes to non-label cells across 48 rows and 29 columns. The page shows no score, decision, or suggested label.
+- **`sbt check` with the labeled worksheet: [success]** (327 s, 0 failed). GoldWorksheetSuite confirms that only the label, labeler, and notes columns differ from a regeneration. Run by the orchestrator, before repair-03c was applied.
+- **Evaluation, run by the human** (runMain is blocked for agents). Report: `phase-00-09-evidence/gold-eval-v1.txt` (sha256 `e3fe186080ffbc707547c5c4b017bb1b3904ceff7298ff5bfe1414216ea7346b`).
+  - The worksheet sha256 printed by the evaluator (`449c3b828d8495ca999a2d05d1cdc7b0f42fdca07a6ac7b627a66a1e163152e4`) matches the file on disk.
+  - The first attempt failed with a PowerShell / `sbt.bat` quoting error. It was re-run successfully.
+  - Policy er-policy-v2, features er-features-v2. Counts: labeled 48, unlabeled 0, unsure 0, untraced 0, malformed 0. Labels: 23 same, 25 different.
+
+    | Path | n | TP | FP | TN | FN | U+ | U- | P [95%] | R [95%] | Coverage |
+    |---|---|---|---|---|---|---|---|---|---|---|
+    | exact-id | 8 | 6 | 1 | 0 | 0 | 0 | 1 | 0.857 [0.487, 0.974] | 1.000 [0.610, 1.000] | 0.875 |
+    | deterministic | 18 | 3 | 0 | 8 | 7 | 0 | 0 | 1.000 [0.439, 1.000] | 0.300 [0.108, 0.603] | 1.000 |
+    | probabilistic | 22 | 0 | 2 | 0 | 0 | 7 | 13 | 0.000 [0.000, 0.658] | 0.000 [0.000, 0.354] | 0.091 |
+    | llm-adjudicated | 0 | - | - | - | - | - | - | n/a | n/a | n/a |
+    | **overall** | 48 | 9 | 3 | 8 | 7 | 7 | 14 | 0.750 [0.468, 0.911] | 0.391 [0.222, 0.592] | 0.563 (unresolved 0.438) |
+
+    U+ and U- are pairs left unresolved or flagged as conflicts, split by the human label (same or different).
+  - **Observations.** Each is recorded for its owner. No threshold or policy change follows from them.
+    - All 7 false negatives come from the deterministic path, where recall is 0.300. By stratum: spelling-variant 3, same-record-other-position 2, different-name 1, name-order 1.
+    - The 2 same-record-other-position pairs were labeled `same`, but the labeling guide says two positions on one paper are normally two people. The human may want to re-check those two labels.
+    - False positives: 1 on exact-id (stratum shared-researcher-id: a shared identifier on a pair labeled `different`), and 2 on probabilistic (homonym-number-suffix 1, initials-or-middle-name 1).
+    - The probabilistic path leaves 20 of 22 pairs unresolved. The LLM-adjudication path was not exercised (n=0).
+    - Threshold sweep: lowering accept to 0.60 raises recall to 0.696 and lowers precision to 0.533. Raising reject to 0.70 lowers unresolved to 0.104 but adds 5 false negatives.
+  - **Limits.**
+    - All records are synthetic, and 48 pairs are far below the spec's minimum of 200 (project-description.md lines 464 and 1230). The intervals are wide.
+    - The spec's error analysis needs at least 10 false positives and 10 false negatives; this set has 3 and 7.
+    - **er-policy-v2 stays UNCALIBRATED, with thresholds unchanged** (accept 0.85, reject 0.55). Tuning on this set would mean fitting synthetic data.
+  - **R-05-4 status: pilot done; the tooling works end to end.** The real gold set is still open: dataset-engineer pulls a bounded real DBLP and enrichment sample, entity-resolution-engineer builds a review queue of at least 200 pairs (researcher pairs, plus work pairs if implemented), and the human labels it. Deterministic-path recall and the exact-id false positive go to entity-resolution-engineer, to be re-checked on the real set.

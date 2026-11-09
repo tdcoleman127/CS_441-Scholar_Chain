@@ -1,0 +1,78 @@
+diff --git a/.claude/hooks/guard-dangerous.sh b/.claude/hooks/guard-dangerous.sh
+index ae60dd7..4f1a999 100755
+--- a/.claude/hooks/guard-dangerous.sh
++++ b/.claude/hooks/guard-dangerous.sh
+@@ -18,6 +18,43 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ . "$HERE/common.sh"
+ SC_HOOK="guard-dangerous"
+ 
++# ---- R3: bounded run time, fail closed (repair-03; docs/agents.md section 5, rules R3-LENCAP and
++# R3-DEADLINE). Claude Code treats a hook that outlives its settings.json timeout (20 s) as a
++# non-blocking error and runs the tool call unchecked. Two layers keep this guard inside that budget:
++#   1. Size caps, checked before any parsing: the hook input (SC_MAX_INPUT_BYTES) right here, and the
++#      command string (SC_MAX_CMD_BYTES, Bash command or AWS MCP cli_command) as soon as it is read.
++#      Bytes are counted as read; on Windows sc_field returns line breaks as CR LF (2 bytes each).
++#   2. A deadline: the whole check runs in a child process under GNU timeout. A child that has not
++#      decided within SC_DEADLINE_S seconds is killed (SIGKILL SC_KILL_AFTER_S seconds later if it
++#      ignores SIGTERM) and the command is blocked. Worst case about 15 + 1 s plus start-up, under the 20 s budget.
++# Only exit 0 (allow, possibly with an "ask" decision on stdout) and exit 2 (block) from the child
++# pass through. Every other status, including the deadline, blocks.
++# SC_MAX_INPUT_BYTES is 65,535, not 65,536 (repair-03c): the wrapper below feeds the child with a
++# here-string, which appends one newline, and on bash 5.2.37 (Git for Windows) a here-string over
++# 65,536 bytes deadlocks in this outer process before timeout starts, so the deadline cannot catch it.
++# 65,535 bytes of input plus the newline is a 65,536-byte here-string, the largest size measured to work.
++SC_MAX_INPUT_BYTES=65535
++SC_MAX_CMD_BYTES=2048
++SC_DEADLINE_S=15
++SC_KILL_AFTER_S=1
++# sc_len <string>: set SC_LEN to its length in bytes, without a subprocess.
++sc_len() { local LC_ALL=C; SC_LEN=${#1}; }
++SC_INPUT="$(cat)"
++sc_len "$SC_INPUT"
++(( SC_LEN <= SC_MAX_INPUT_BYTES )) || sc_block "the hook input is $SC_LEN bytes, over the $SC_MAX_INPUT_BYTES-byte limit this guard can check in time (rule R3-LENCAP), so it is blocked (fail closed). Shorten the command or split it into several commands. Put file content in the Write tool, not in Bash."
++if [ "${1:-}" != "--sc-inner" ]; then
++  SC_TIMEOUT_BIN=""
++  for c in /usr/bin/timeout /bin/timeout; do [ -x "$c" ] && { SC_TIMEOUT_BIN="$c"; break; }; done
++  [ -n "$SC_TIMEOUT_BIN" ] || sc_block "GNU timeout (/usr/bin/timeout) was not found, so this guard cannot bound its own run time (rule R3-DEADLINE). Commands are blocked (fail closed) until coreutils timeout is installed and Claude Code is restarted."
++  "$SC_TIMEOUT_BIN" -k "$SC_KILL_AFTER_S" "$SC_DEADLINE_S" "$BASH" "${BASH_SOURCE[0]}" --sc-inner <<< "$SC_INPUT"
++  rc=$?
++  case "$rc" in
++    0|2) exit "$rc" ;;
++    124|137) sc_block "this guard could not finish checking the command within $SC_DEADLINE_S s (rule R3-DEADLINE), so it is blocked (fail closed). Each ';', '|', '&', '(', ')', backtick, and line break adds a segment, even inside quotes, and commands with many segments or words take longest. Split it into shorter commands, put file content in the Write tool, and retry once if the machine is heavily loaded." ;;
++    *) sc_block "the guard check ended with unexpected status $rc, so the command is blocked (fail closed)." ;;
++  esac
++fi
++
+ # ---- Policy tables (mirrors docs/agents.md sections 5 and 7) --------------------------------
+ ROSTER="factory-engineer build-engineer domain-engineer dataset-engineer hadoop-engineer entity-resolution-engineer spark-engineer storage-engineer rag-engineer service-engineer test-engineer code-reviewer infra-engineer deploy-engineer experiment-engineer documentation-engineer incident-responder dependency-updater"
+ READ_ONLY_AGENTS="code-reviewer"
+@@ -53,7 +90,6 @@ dataset_script_runners() {
+ }
+ # ---------------------------------------------------------------------------------------------
+ 
+-SC_INPUT="$(cat)"
+ export SC_INPUT
+ SC_PY="$(sc_python)" || sc_block "no working Python 3 interpreter (python3, python, or py) was found, so the guard cannot inspect this command. Install Python 3 and restart Claude Code. Until then, commands are blocked (fail closed)."
+ tool="$(sc_field tool_name)" || sc_block "the hook input is not valid JSON (fail closed)."
+@@ -63,6 +99,8 @@ case "$tool" in
+   *)                      exit 0 ;;
+ esac
+ [ -n "$raw" ] || exit 0
++sc_len "$raw"
++(( SC_LEN <= SC_MAX_CMD_BYTES )) || sc_block "the command is $SC_LEN bytes, over the $SC_MAX_CMD_BYTES-byte limit this guard can check within its time budget (rule R3-LENCAP), so it is blocked (fail closed) for every caller. Split it into several shorter commands. Put file content (commit messages, data, scripts) in a file with the Write tool and pass the file name, for example 'git commit -F <file>'."
+ 
+ agent_id="$(sc_field agent_id)"
+ agent_type="$(sc_field agent_type)"
+diff --git a/docs/agents.md b/docs/agents.md
+index ffb6d91..5be8e58 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -116,6 +116,8 @@ Two rules apply to every agent and to the orchestrator, through hooks and deny r
+ 
+ guard-dangerous.sh also blocks two command shapes for every caller, because it cannot see what bash would make of them. First, a backslash directly before a newline or carriage return, in any quote state. Second, `$'` or `$"` anywhere, even inside quotes, in a command that is multi-line or contains `${`, `$(` (which covers `$((`), a backtick, `$[`, `<(`, or `>(`. A `#` comment, a heredoc body, or the fresh quoting context inside a substitution can hide ANSI-C quoting from the guard. So `grep -n 'foo$' $(git ls-files)` is blocked. Run the substitution as a separate command, anchor without a trailing `$` (`grep -nx '.*foo'`), or use the Write tool for file content.
+ 
++guard-dangerous.sh also bounds its own run time, for every caller and for both the Bash and the `mcp__aws-api__call_aws` matchers, so that it cannot be padded past the 20 s hook timeout in settings.json. Claude Code treats a hook that times out as a non-blocking error, so without these bounds the call would run unchecked (finding R3, repair-03). Rule R3-LENCAP: before any parsing, the guard blocks hook input over 65,535 bytes, and it blocks a command (the Bash `command` or the AWS MCP `cli_command`) over 2,048 bytes as soon as it has read it. The input cap is 65,535 bytes, not 65,536 (repair-03c), because the guard passes the input to its checking child as a bash here-string, which appends one newline, and on the reference bash (5.2.37, Git for Windows) a here-string over 65,536 bytes deadlocks in the outer guard before `timeout` starts, so R3-DEADLINE cannot catch it and the hook would outlive its 20 s timeout. An input of 65,535 bytes becomes a 65,536-byte here-string, the largest size measured to work. The bound has no spare byte and depends on that bash build. Possible future hardening, not adopted: pipe the input to the child instead of using a here-string, which removes the size dependence. The guard counts bytes as it reads the command, and on Windows each line break arrives as CR LF, so it counts as two bytes. Rule R3-DEADLINE: the guard runs the whole check in a child process under GNU `timeout` (`/usr/bin/timeout`, shipped with Git for Windows). If the child has not decided within 15 s, it is killed (forcibly 1 s later if needed) and the command is blocked. If `timeout` is missing, every command is blocked. Any child exit status other than 0 (allow or ask) or 2 (block) also blocks. The time a check takes depends on the number of segments and words, and on machine load. The guard counts segments by character and ignores quoting: a command has one segment, plus one for every `;`, `|`, `&`, `(`, `)`, backtick, and line break anywhere in it, including inside quotes and heredoc bodies. So `&&` and `||` add two each, `$(...)` adds two unless it ends the command, and every `|` in a quoted pattern adds one. Separators at the very end of the command, and the `&` of a file-descriptor redirect such as `2>&1` or `>&2`, are not counted. For example, `grep -rnE 'a|b|c|d|e|f|g|h|i|j|k|l' modules | wc -l` has 13 segments, and six `bash -n` commands joined by `&&` have 11. Measured on the reference machine (repair-03 evidence), commands with 5 to 7 segments took 6.6 to 12.5 s and commands with 11 or 12 segments took 12.5 to 18.5 s, so a short command with many segments can be blocked by R3-DEADLINE even under the length cap. Rule of thumb: keep each command to about 6 segments or fewer. Run chained commands one at a time, and write a long alternation as `grep -e a -e b` or `grep -F -f <file>` instead of `'a|b|c'`. Split long commands into several commands. Put file content (commit messages, data, scripts) in a file with the Write tool and pass the file name, for example `git commit -F <file>`. Residual RR-12: the deadline depends on machine load, so the same command can pass on one run and be blocked on the next. A blocked run is fail closed. The deadline and kill grace (15 + 1 s) leave about 4 s of the 20 s hook timeout for the settings.json wrapper command, the outer bash start-up, and reaping the child. Under extreme load that part can take longer, the hook can then exceed 20 s, and Claude Code would run the call unchecked. The guard's per-segment cost is tracked as a separate performance follow-up.
++
+ ## 6. Lifecycle routing
+ 
+ | Lifecycle stage | Trigger vocabulary | Owning agent | Gate, then follow-up |

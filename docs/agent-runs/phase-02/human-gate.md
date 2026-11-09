@@ -18,4 +18,4 @@ Remaining risk:
 - VERY MINOR - Scala version facts were not rechecked, since they came from the agent looking them up
 - MINOR - Weak docker image check in build.sbt, "someone can change the FROM line to amazoncorretto:17 without failing it" -- in future, should require FROM uses correct pinned image
 
-Accepted commit: <40-character hash>
+Accepted commit: 313bb4bd025bfd86348bbbff19bb9afb9eec42f8

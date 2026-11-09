@@ -60,3 +60,18 @@ Environment (not in repo): uv 0.13.7 installed for aws-docs/aws-api MCP; Docker
 started and terraform MCP image pulled; GitHub PAT and AWS read-only profile pending.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+
+
+Ratifications for repair-03c (R3 guard timeout fail-open), 2026-11-08:
+1. I accept R3-LENCAP: hook input capped at 65,535 bytes, commands at 2,048 bytes.
+2. I accept R3-DEADLINE Option A: 15 s deadline + 1 s kill grace under the existing 20 s hook timeout.
+3. I accept the hard dependency on /usr/bin/timeout (missing timeout blocks every call).
+4. I accept the privilege narrowing for every caller (Bash and AWS MCP); nothing is widened.
+5. I accept residuals RR-12, R3-PERF, and the zero-margin 65,535 bound tied to this bash build.
+6. Track R3-OWN, R3-STOP, and option (b) (pipe instead of here-string) as follow-up items.
+7. Apply repair-03c.patch only (sha256 adba885751aeac1735ad860419904512cb6a8d185558526519f33d24ade636bc);
+   it supersedes repair-03.patch and the 03b draft. Then validate, commit, and restart.
+
+Gold-set pilot (R-05-4): 48/48 labeled by TC; eval in phase-00-09-evidence/gold-eval-v1.txt.
+er-policy-v2 stays UNCALIBRATED; real 200+ pair set still required.
