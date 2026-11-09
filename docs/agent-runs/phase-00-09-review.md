@@ -273,3 +273,45 @@ The human ratified repair-03c (decisions 1-7, `phase-00-09-human-gate.md`), appl
   - before Phase 12: R-06a-9, R-06a-1, R-09-2, R-09-3, R-06b-5, R-06b-1, the AWS fact checks (R-07-1, R-08-8, R-09-8, now possible through aws-docs), and the aws-api profile;
   - the MINOR items in `phase-00-09-minor-fixes.md`.
 - **Carried into the Phase 10 work order:** R-00-1, R-09-5, R-09-1.
+
+## 2026-11-09 follow-up 5: AMD-AWSMCP (replace aws-api with the AWS MCP Server)
+
+- **Request, from the human:** move from the deprecated `aws-api` server to the AWS-hosted AWS MCP Server. Instructor AWS guidance is recorded in `aws_instructions_prof_student_qanda.md`: own account, a $25 cumulative budget, alerts at $10, $15, and $20. The human created the Identity Center profile `scholarchain-readonly`: permission set ScholarChainReadOnly = ReadOnlyAccess plus an inline Deny on GetSecretValue, kms:Decrypt, the ssm:GetParameter* actions, and sts:AssumeRole. SSO session `scholarchain`.
+- **Facts supplied by the orchestrator:**
+  - Migration guide (awslabs/mcp MIGRATION.md).
+  - PyPI: `mcp-proxy-for-aws` 1.7.0 (Sep 15, 2026) pinned under the 2-week rule; 1.8.0 (Nov 3) is too new.
+  - AWS docs: the tool list (knowledge tools, plus `aws___run_script`, `aws___get_presigned_url`, `aws___get_tasks`); `aws___call_aws` is not listed.
+  - The aws-mcp:* IAM actions are deprecated.
+  - A new account on the Free plan cannot use Neptune or EMR, so the human upgrades to the Paid plan just before Phase 12.
+- **factory-engineer proposal `amd-awsmcp.patch`** (sha256 `dd898c1f…e404`; 9 files; 66/66 new probes plus all regression sets).
+- **code-reviewer: REQUEST_CHANGES.**
+  - F1 MAJOR: a CR or Unicode line separator let a second, mutating command pass the call_aws check.
+  - F2 MINOR: the profile value was not pinned in the validator.
+  - F3 MINOR: identity keys and a quoted `--profile` passed, and RR-13 overclaimed.
+  - F4 MINOR: §9 claimed server-level read-only for aws-mcp.
+  - **Do not apply `amd-awsmcp.patch`.**
+- **factory-engineer repair-01 (loop 1): `amd-awsmcp-r1.patch`**, sha256 `236d10c14ed1a7067f642526c6433bf3a317a7395be4ba6c708ef55b355bf444`. Probes: `amd-awsmcp-r1-probes.txt`, sha256 `140281739ad2d0c9c733bf069892d5559dd18c8067194acb151ba979d28b64ea`. The orchestrator verified both hashes, `git apply --check` on 68d287f, and that the live constitutional files are unchanged.
+  - Fixes:
+    - F1: call_aws commands are limited to printable ASCII plus tab and LF, split on LF only, and the exact checked lines are emitted.
+    - F2: exactly one `--profile` with the read-only expression, `--read-only` exactly once, no `--skip*`, and env limited to AWS_PROFILE and AWS_REGION.
+    - F3: identity-like key names are blocked, and the `--profile` refusal ignores quotes and catches abbreviations.
+    - F4: §9 is qualified.
+  - Results: AWS MCP probes 106/106, mutant validator 15/15, R3C 18, R3 21, repair-02 54, repair-02b 37, phase-03 146 (summary line: UNEXPECTED rows 0); validator PASS (103). Repro rows confirm that the original F1 and F3 defects existed.
+  - Nothing widened beyond the first proposal: the four AWS agents swap to `mcp__aws-mcp__aws___call_aws` (ask), and the knowledge tools become callable with a prompt. run_script, get_tasks, get_presigned_url, and every aws-api tool are denied.
+- **code-reviewer on r1: APPROVE, with 1 MINOR documentation finding.**
+  - The finding: the R3 paragraph's "line breaks count as two bytes on Windows" is not true for the call_aws path, which emits LF.
+  - Verified: F1 closed from the JSON value to section 8; F2, F3, and F4 fixed; dispatch order, deny rules, and R3 constants unchanged.
+  - Risks noted without a failure input: proxy option abbreviations are unverified; `--endpoint-url` and `--region` inside commands are not refused (IAM is the backstop, RR-15); the hosted server's command tokenizing is unknown.
+  - Coverage limits: a safety classifier interrupted the reviewer, so it did not spot-check probe rows or re-read guard-dangerous.sh after line 659.
+  - Orchestrator follow-up on those limits: the r1 patch's only guard hunk after the reviewed range is the one-line rename at old line 634 (`mcp__aws-api__call_aws` to `mcp__aws-mcp__aws___call_aws`). The probe summary shows 0 unexpected results in all 8 sets. Individual probe rows were not spot-checked by any reviewer.
+  - Repair loops used: 1.
+- **Next gate:** human ratification of D1-D7. Apply only `amd-awsmcp-r1.patch`, then commit, `aws sso login --sso-session scholarchain`, and restart. Then the post-restart checklist:
+  - `uvx mcp-proxy-for-aws@1.7.0 --help` shows the four flags;
+  - aws-mcp connects and aws-api is absent;
+  - record the tool list (RR-13, RR-14);
+  - a call_aws read is allowed and a mutating call is blocked;
+  - run_script and presigned URL are denied;
+  - the profile expands correctly;
+  - the validator passes, and the probes re-run against the live hooks.
+
+  The MINOR R3 documentation wording is tracked for the next factory-engineer amendment.

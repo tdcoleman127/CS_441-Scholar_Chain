@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook (matchers: Bash, mcp__aws-api__call_aws). ScholarChain dangerous-command guard.
+# PreToolUse hook (matchers: Bash, mcp__aws-mcp__.*|mcp__aws-api__.*). ScholarChain dangerous-command guard.
+# AWS MCP Server tools (amendment AMD-AWSMCP, docs/agents.md sections 5 and 9): knowledge tools pass;
+# aws___call_aws gets the read-only AWS CLI inspection below; aws___run_script and aws___get_tasks pass
+# only for AWSMCP_RUN_SCRIPT_AGENTS (empty = Option A, blocked for everyone); aws___get_presigned_url,
+# any other mcp__aws-mcp__ tool, and every tool of the retired aws-api server are blocked (fail closed).
 # Reads the proposed command string and blocks (exit 2) anything on the floor list:
 #   terraform apply/destroy and state surgery; force pushes and history rewrites; broad rm -r;
 #   secret reads; destructive or mutating AWS CLI calls (S3, DynamoDB, Neptune, S3 Vectors, ECR,
@@ -22,7 +26,7 @@ SC_HOOK="guard-dangerous"
 # R3-DEADLINE). Claude Code treats a hook that outlives its settings.json timeout (20 s) as a
 # non-blocking error and runs the tool call unchecked. Two layers keep this guard inside that budget:
 #   1. Size caps, checked before any parsing: the hook input (SC_MAX_INPUT_BYTES) right here, and the
-#      command string (SC_MAX_CMD_BYTES, Bash command or AWS MCP cli_command) as soon as it is read.
+#      command string (SC_MAX_CMD_BYTES, Bash command or AWS MCP call_aws commands) as soon as it is read.
 #      Bytes are counted as read; on Windows sc_field returns line breaks as CR LF (2 bytes each).
 #   2. A deadline: the whole check runs in a child process under GNU timeout. A child that has not
 #      decided within SC_DEADLINE_S seconds is killed (SIGKILL SC_KILL_AFTER_S seconds later if it
@@ -88,15 +92,118 @@ dataset_script_runners() {
     *)                       echo "unknown" ;;
   esac
 }
+# Amendment AMD-AWSMCP (docs/agents.md sections 5 and 9): AWS MCP Server tools, by name after the
+# mcp__aws-mcp__ prefix. Knowledge tools are documentation and Region lookups. aws___run_script runs
+# Python the guard cannot inspect, so it and its poller aws___get_tasks pass only for the agents
+# listed in AWSMCP_RUN_SCRIPT_AGENTS. Empty is Option A (ratified default): blocked for every caller.
+AWSMCP_KNOWLEDGE_TOOLS="aws___retrieve_skill aws___search_documentation aws___read_documentation aws___list_regions aws___get_regional_availability"
+AWSMCP_RUN_SCRIPT_AGENTS=""
 # ---------------------------------------------------------------------------------------------
 
 export SC_INPUT
 SC_PY="$(sc_python)" || sc_block "no working Python 3 interpreter (python3, python, or py) was found, so the guard cannot inspect this command. Install Python 3 and restart Claude Code. Until then, commands are blocked (fail closed)."
 tool="$(sc_field tool_name)" || sc_block "the hook input is not valid JSON (fail closed)."
+# awsmcp_input <commands|profile>: inspect tool_input of an AWS MCP Server call (AMD-AWSMCP).
+# "profile" mode (knowledge tools; run_script under Option B): status 5 if a top-level key name
+#   contains profile, credential, role, or endpoint (case-insensitive).
+# "commands" mode (aws___call_aws, whose input schema is unverified), all fail closed:
+#   - status 5 if any key name contains profile, role, arn, credential, endpoint, region, or account;
+#   - every key whose name contains "command" (cli_command, command, commands, ...) must hold a string
+#     or a list of strings (6); every other key may hold only null, a boolean, a number, or a token
+#     string of at most 128 characters from [A-Za-z0-9._:/@=+-] (8); at least one command (7);
+#   - commands may contain only printable ASCII, tab, and LF (11). CR, VT, FF, FS/GS/RS, NEL, U+2028,
+#     U+2029, every other control, and every non-ASCII character are refused, so Python, bash, and the
+#     server cannot disagree about where a line or word ends (repair-01 F1);
+#   - every line must start with the word aws (9) and must not carry a profile option: after removing
+#     quote characters and backslashes, no word may start with --profile or abbreviate it (--pro,
+#     --prof, ...) (10).
+# Output: the non-blank lines, exactly as checked, joined with LF and no CR, for R3-LENCAP and section 8.
+awsmcp_input() {
+  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" -c '
+import json, os, re, sys
+try:
+    ti = json.loads(os.environ.get("SC_INPUT") or "{}").get("tool_input")
+except Exception:
+    sys.exit(3)
+if ti is None:
+    ti = {}
+if not isinstance(ti, dict):
+    sys.exit(4)
+mode = sys.argv[1]
+sens = r"profile|credential|role|endpoint" if mode != "commands" else r"profile|role|arn|credential|endpoint|region|account"
+if any(re.search(sens, str(k).lower()) for k in ti):
+    sys.exit(5)
+if mode != "commands":
+    sys.exit(0)
+cmds = []
+for k, v in ti.items():
+    if "command" in str(k).lower():
+        vals = v if isinstance(v, list) else [v]
+        if not all(isinstance(x, str) for x in vals):
+            sys.exit(6)
+        cmds += vals
+    elif v is None or isinstance(v, (bool, int, float)):
+        continue
+    elif isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9._:/@=+-]{0,128}", v):
+        continue
+    else:
+        sys.exit(8)
+lines = []
+for c in cmds:
+    if re.search(r"[^\t\n\x20-\x7e]", c):
+        sys.exit(11)
+    lines += [l for l in c.split("\n") if l.strip(" \t")]
+if not lines:
+    sys.exit(7)
+for line in lines:
+    if not re.match(r"[ \t]*aws([ \t]|$)", line, re.I):
+        sys.exit(9)
+    for w in re.sub(r"[\x27\x22\\\\]", "", line).lower().split():
+        if w.startswith("--profile") or re.fullmatch(r"--pro(f(i(l(e)?)?)?)?(=.*)?", w):
+            sys.exit(10)
+sys.stdout.buffer.write("\n".join(lines).encode("ascii"))
+' "$1"
+}
+awsmcp_fail() {   # <status of awsmcp_input>: block on anything but 0
+  case "$1" in
+    0) return 0 ;;
+    5) sc_block "'$tool' has an input key that names a profile, role, ARN, credential, endpoint, Region, or account. The AWS MCP proxy is pinned to the read-only profile and Region in .mcp.json, and such a parameter could leave the read-only role, so the call is blocked (fail closed). Omit it." ;;
+    6) sc_block "'$tool' has a command field that is not a string or a list of strings, so it cannot be inspected (fail closed)." ;;
+    7) sc_block "'$tool' has no non-empty command field (cli_command, or another field whose name contains 'command'), so it cannot be inspected (fail closed)." ;;
+    8) sc_block "'$tool' has an input field outside the command field that is a list, an object, or a string with spaces or unusual characters. The guard cannot inspect it, so the call is blocked (fail closed)." ;;
+    9) sc_block "'$tool' accepts only AWS CLI commands: every command line must start with 'aws' (fail closed)." ;;
+    10) sc_block "'$tool' commands must not pass --profile (or an abbreviation of it, quoted or not). The AWS MCP proxy is pinned to the read-only profile in .mcp.json, so the call is blocked (fail closed)." ;;
+    11) sc_block "'$tool' commands may contain only printable ASCII, tabs, and line feeds. A carriage return, other control or line-separator character, or non-ASCII character could hide a second command from the guard, so the call is blocked (fail closed)." ;;
+    *) sc_block "the input of '$tool' is not valid JSON or not an object (status $1), so the call is blocked (fail closed)." ;;
+  esac
+}
+AWSMCP_HINT="For AWS reads use mcp__aws-mcp__aws___call_aws if your role grants it, or a read-only 'aws <service> describe|list|get ... --profile scholarchain-readonly' command through Bash. AWS changes go through Terraform (human-applied) or approved scripts."
 case "$tool" in
-  Bash)                   raw="$(sc_field tool_input.command)" ;;
-  mcp__aws-api__call_aws) raw="$(sc_field tool_input.cli_command)" ;;
-  *)                      exit 0 ;;
+  Bash) raw="$(sc_field tool_input.command)" ;;
+  mcp__aws-mcp__aws___call_aws)
+    raw="$(awsmcp_input commands)"; awsmcp_fail $? ;;
+  mcp__aws-mcp__*)
+    t="${tool#mcp__aws-mcp__}"
+    case "$t" in ""|*[!a-z0-9_]*) sc_block "'$tool' is not a known AWS MCP Server tool, so it is blocked (fail closed; amendment AMD-AWSMCP). $AWSMCP_HINT" ;; esac
+    case " $AWSMCP_KNOWLEDGE_TOOLS " in
+      *" $t "*) awsmcp_input profile >/dev/null; awsmcp_fail $?; exit 0 ;;
+    esac
+    case "$t" in
+      aws___run_script|aws___get_tasks)
+        who="orchestrator"
+        if [ -n "$(sc_field agent_id)" ]; then who="$(sc_field agent_type)"; who="${who:-unknown-subagent}"; fi
+        case " $AWSMCP_RUN_SCRIPT_AGENTS " in
+          *" $who "*) if [ "$who" != "orchestrator" ]; then awsmcp_input profile >/dev/null; awsmcp_fail $?; exit 0; fi ;;
+        esac
+        sc_block "'$tool' is blocked for $who. aws___run_script runs Python inside AWS that this guard cannot inspect, and aws___get_tasks only polls it, so both are blocked unless AWSMCP_RUN_SCRIPT_AGENTS lists the caller (amendment AMD-AWSMCP, Option A: nobody). $AWSMCP_HINT" ;;
+      aws___get_presigned_url)
+        sc_block "'$tool' mints presigned S3 upload and download URLs, which bypass the read-only CLI inspection and can move data, so it is blocked for every caller (amendment AMD-AWSMCP). $AWSMCP_HINT" ;;
+      *)
+        sc_block "'$tool' is not a known AWS MCP Server tool, so it is blocked (fail closed; amendment AMD-AWSMCP). A new tool needs an amendment to docs/agents.md section 5. $AWSMCP_HINT" ;;
+    esac ;;
+  mcp__aws-api__*)
+    sc_block "the aws-api MCP server (awslabs.aws-api-mcp-server) was retired by amendment AMD-AWSMCP, so '$tool' is blocked for every caller (fail closed). $AWSMCP_HINT" ;;
+  *) exit 0 ;;
 esac
 [ -n "$raw" ] || exit 0
 sc_len "$raw"
@@ -634,7 +741,7 @@ while IFS= read -r seg; do
     aws_block "awscurl" "signed write request"
   fi
 done <<< "$segments"
-[ "$tool" = "mcp__aws-api__call_aws" ] && exit 0
+[ "$tool" = "mcp__aws-mcp__aws___call_aws" ] && exit 0
 
 # ---- 9a. Output options (git --output, json.tool outfile): checked on the resolved operand -------
 # These commands are allow-listed for evidence gathering, so a write through them must never reach

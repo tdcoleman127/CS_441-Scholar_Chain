@@ -44,7 +44,7 @@ py() { PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$SC_PY" "$@"; }
 
 REQUIRED_COMMANDS="deploy rollback incident run-pipeline experiment"
 EXPECTED_NO_TERRITORY="code-reviewer"
-MCP_READ_TOOLS="mcp__aws-api__call_aws mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation mcp__aws-docs__recommend mcp__terraform__search_providers mcp__terraform__get_provider_details mcp__terraform__get_latest_provider_version mcp__terraform__get_provider_capabilities mcp__terraform__search_modules mcp__terraform__get_module_details mcp__terraform__get_latest_module_version mcp__github__actions_list mcp__github__actions_get mcp__github__get_job_logs mcp__github__list_releases mcp__github__get_latest_release mcp__github__get_file_contents mcp__github__list_commits mcp__github__get_commit mcp__github__pull_request_read mcp__github__list_pull_requests mcp__github__issue_read mcp__github__list_issues"
+MCP_READ_TOOLS="mcp__aws-mcp__aws___call_aws mcp__aws-mcp__aws___retrieve_skill mcp__aws-mcp__aws___search_documentation mcp__aws-mcp__aws___read_documentation mcp__aws-mcp__aws___list_regions mcp__aws-mcp__aws___get_regional_availability mcp__aws-docs__search_documentation mcp__aws-docs__read_documentation mcp__aws-docs__recommend mcp__terraform__search_providers mcp__terraform__get_provider_details mcp__terraform__get_latest_provider_version mcp__terraform__get_provider_capabilities mcp__terraform__search_modules mcp__terraform__get_module_details mcp__terraform__get_latest_module_version mcp__github__actions_list mcp__github__actions_get mcp__github__get_job_logs mcp__github__list_releases mcp__github__get_latest_release mcp__github__get_file_contents mcp__github__list_commits mcp__github__get_commit mcp__github__pull_request_read mcp__github__list_pull_requests mcp__github__issue_read mcp__github__list_issues"
 READ_ONLY_TOOLS="Read Grep Glob Bash"
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 
@@ -68,6 +68,7 @@ else fail "roster: no rows between <!-- roster:begin --> and <!-- roster:end -->
 # ---- 3. Agent frontmatter, names, and tool fences ---------------------------------------------
 read_only_agents="$(sed -n 's/^READ_ONLY_AGENTS="\(.*\)"$/\1/p' .claude/hooks/guard-dangerous.sh 2>/dev/null)"
 guard_roster="$(sed -n 's/^ROSTER="\(.*\)"$/\1/p' .claude/hooks/guard-dangerous.sh 2>/dev/null)"
+awsmcp_run_agents="$(sed -n 's/^AWSMCP_RUN_SCRIPT_AGENTS="\(.*\)"$/\1/p' .claude/hooks/guard-dangerous.sh 2>/dev/null)"
 names=""
 descs=""
 shopt -s nullglob
@@ -95,6 +96,10 @@ for f in "${agent_files[@]}"; do
     case "$t" in
       Agent|Task) fail "tools: $name grants '$t'; subagents must not invoke one another"; ok=0 ;;
       NotebookEdit) fail "tools: $name grants NotebookEdit, which no matrix role needs"; ok=0 ;;
+      mcp__aws-api__*) fail "tools: $name grants '$t'; the aws-api MCP server was retired by amendment AMD-AWSMCP (use mcp__aws-mcp__aws___call_aws)"; ok=0 ;;
+      mcp__aws-mcp__aws___get_presigned_url) fail "tools: $name grants '$t', which guard-dangerous.sh blocks for every caller (AMD-AWSMCP)"; ok=0 ;;
+      mcp__aws-mcp__aws___run_script|mcp__aws-mcp__aws___get_tasks)
+        in_list "$name" "$awsmcp_run_agents" || { fail "tools: $name grants '$t', but AWSMCP_RUN_SCRIPT_AGENTS in guard-dangerous.sh does not list it (AMD-AWSMCP)"; ok=0; } ;;
       mcp__*) in_list "$t" "$MCP_READ_TOOLS" || { fail "tools: $name grants '$t', which is not on the read-only MCP allowlist"; ok=0; } ;;
     esac
   done
@@ -149,6 +154,7 @@ for fn in script_runners dataset_script_runners; do
   done
 done
 set +f
+for a in $awsmcp_run_agents; do in_list "$a" "$roster" || fail "orphan: AWSMCP_RUN_SCRIPT_AGENTS in guard-dangerous.sh names unknown agent '$a'"; done
 [ "$fails" -eq "$fails_before_orphans" ] && pass "orphans: roster, agent files, guard ROSTER, and ownership owners agree"
 
 # ---- 5. Hooks: syntax and executable bits -------------------------------------------------------
@@ -193,12 +199,18 @@ if s:
                     if script in h.get("command", ""):
                         return True
         return False
-    for ev, mp, sc in [("PreToolUse", "Bash", "guard-dangerous.sh"), ("PreToolUse", "mcp__aws-api__call_aws", "guard-dangerous.sh"),
+    for ev, mp, sc in [("PreToolUse", "Bash", "guard-dangerous.sh"), ("PreToolUse", "mcp__aws-mcp__.*", "guard-dangerous.sh"),
+                       ("PreToolUse", "mcp__aws-api__.*", "guard-dangerous.sh"),
                        ("PreToolUse", "Edit", "guard-ownership.sh"), ("PreToolUse", "Write", "guard-ownership.sh"),
                        ("PostToolUse", "Write", "format-scala.sh"), ("PostToolUse", "Edit", "format-scala.sh"),
                        ("PostToolUse", "Write", "validate-agent-files.sh"), ("Stop", None, "verify-tests-ran.sh"),
                        ("SubagentStop", None, "verify-tests-ran.sh")]:
         (ok if wired(ev, mp, sc) else bad)("hook wired: %s %s -> %s" % (ev, mp or "*", sc))
+    # Amendment AMD-AWSMCP: second layer for the AWS MCP tools the guard blocks, and the retired server.
+    for r in ["mcp__aws-api", "mcp__aws-mcp__aws___run_script", "mcp__aws-mcp__aws___get_presigned_url", "mcp__aws-mcp__aws___get_tasks"]:
+        (ok if r in deny else bad)("aws-mcp deny rule present: %s" % r)
+    stale = [x for x in allow + perms.get("ask", []) if x.startswith("mcp__aws-api")]
+    (bad if stale else ok)("settings: no allow or ask rule for the retired aws-api server %s" % stale)
     for ev, entries in hooks.items():
         for entry in entries:
             for h in entry.get("hooks", []):
@@ -215,8 +227,27 @@ if m is not None:
     (bad if re.search(r"ghp_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}", blob) else ok)("mcp: no literal secrets (only ${VAR} references)")
     gh = m.get("github", {})
     (ok if gh.get("url", "").rstrip("/").endswith("/readonly") else bad)("mcp: github uses the read-only endpoint")
-    aws = m.get("aws-api", {}).get("env", {})
-    (ok if aws.get("READ_OPERATIONS_ONLY") == "true" else bad)("mcp: aws-api READ_OPERATIONS_ONLY=true")
+    (bad if "aws-api" in m else ok)("mcp: retired aws-api server absent (amendment AMD-AWSMCP)")
+    aargs = m.get("aws-mcp", {}).get("args", [])
+    pinned = len(aargs) >= 2 and re.fullmatch(r"mcp-proxy-for-aws@[0-9]+\.[0-9]+\.[0-9]+", aargs[0]) and aargs[1] == "https://aws-mcp.us-east-1.api.aws/mcp"
+    (ok if pinned else bad)("mcp: aws-mcp runs a pinned mcp-proxy-for-aws against https://aws-mcp.us-east-1.api.aws/mcp")
+    # repair-01 F2: exactly one --profile with exactly the read-only expression, exactly one --read-only,
+    # no --skip* (argparse accepts unambiguous abbreviations, so prefixes such as --prof and --skip-a count),
+    # and an env block limited to AWS_PROFILE (same expression) and AWS_REGION.
+    PROFILE_EXPR = "${SCHOLARCHAIN_AWS_READONLY_PROFILE:-scholarchain-readonly}"
+    def like(a, opt):
+        name = a.split("=", 1)[0]
+        return a.startswith("--") and (name.startswith(opt) or (len(name) > 3 and opt.startswith(name)))
+    prof = [i for i, a in enumerate(aargs) if like(a, "--profile")]
+    prof_ok = len(prof) == 1 and aargs[prof[0]] == "--profile" and prof[0] + 1 < len(aargs) and aargs[prof[0] + 1] == PROFILE_EXPR
+    (ok if prof_ok else bad)("mcp: aws-mcp passes exactly one --profile %s" % PROFILE_EXPR)
+    ro = [a for a in aargs if like(a, "--read-only")]
+    (ok if ro == ["--read-only"] else bad)("mcp: aws-mcp passes --read-only exactly once")
+    skip = [a for a in aargs if like(a, "--skip-auth") or a.startswith("--skip")]
+    (bad if skip else ok)("mcp: aws-mcp passes no --skip* option %s" % skip)
+    aenv = m.get("aws-mcp", {}).get("env", {})
+    env_ok = set(aenv) <= {"AWS_PROFILE", "AWS_REGION"} and aenv.get("AWS_PROFILE", PROFILE_EXPR) == PROFILE_EXPR
+    (ok if env_ok else bad)("mcp: aws-mcp env holds only AWS_PROFILE (= %s) and AWS_REGION" % PROFILE_EXPR)
     tf = m.get("terraform", {})
     targs = " ".join(tf.get("args", []))
     (ok if "--toolsets=registry" in targs and "TFE_TOKEN" not in json.dumps(tf) else bad)("mcp: terraform limited to public registry toolset, no TFE_TOKEN")

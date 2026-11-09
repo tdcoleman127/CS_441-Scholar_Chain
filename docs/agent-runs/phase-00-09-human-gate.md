@@ -62,7 +62,6 @@ started and terraform MCP image pulled; GitHub PAT and AWS read-only profile pen
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 
-
 Ratifications for repair-03c (R3 guard timeout fail-open), 2026-11-08:
 1. I accept R3-LENCAP: hook input capped at 65,535 bytes, commands at 2,048 bytes.
 2. I accept R3-DEADLINE Option A: 15 s deadline + 1 s kill grace under the existing 20 s hook timeout.
@@ -75,3 +74,18 @@ Ratifications for repair-03c (R3 guard timeout fail-open), 2026-11-08:
 
 Gold-set pilot (R-05-4): 48/48 labeled by TC; eval in phase-00-09-evidence/gold-eval-v1.txt.
 er-policy-v2 stays UNCALIBRATED; real 200+ pair set still required.
+
+Ratifications for AMD-AWSMCP (aws-api -> AWS MCP Server), 2026-11-09:
+D1. Adopt amd-awsmcp-r1.patch (sha256 236d10c14ed1a7067f642526c6433bf3a317a7395be4ba6c708ef55b355bf444),
+    superseding amd-awsmcp.patch. Proxy mcp-proxy-for-aws@1.7.0 with --read-only and the
+    scholarchain-readonly profile.
+D2. run_script policy: Option A (aws___run_script and aws___get_tasks blocked for every caller).
+D3. Knowledge tools: granted to no agent; orchestrator use prompts.
+D4. Accept the strict call_aws input rules (printable ASCII only, identity-like keys blocked,
+    --profile refused) until the schema is confirmed after restart.
+D5. Accept residuals RR-13, RR-14, RR-15 and loss of the old server-side mutation-consent and
+    local-file-access controls.
+D6. Accept dropping the guide's timeout/transport keys; AWS_PROFILE/AWS_REGION also in env;
+    env limited to those two keys.
+D7. Apply, commit, restart, run the post-restart checklist. Track the MINOR R3 doc wording
+    (call_aws line breaks count 1 byte) for the next amendment.

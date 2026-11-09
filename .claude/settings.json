@@ -106,7 +106,7 @@
       "Bash(bash datasets/scripts/fetch-by-id.sh*)",
       "Bash(datasets/scripts/fetch-by-id.sh*)",
       "Bash(./datasets/scripts/fetch-by-id.sh*)",
-      "mcp__aws-api__call_aws",
+      "mcp__aws-mcp__aws___call_aws",
       "WebFetch",
       "WebSearch"
     ],
@@ -246,7 +246,11 @@
       "Bash(*bash.exe *cleanup.sh*)",
       "Bash(source *cleanup.sh*)",
       "Bash(. *cleanup.sh*)",
-      "Bash(*fetch.sh *--full*)"
+      "Bash(*fetch.sh *--full*)",
+      "mcp__aws-api",
+      "mcp__aws-mcp__aws___run_script",
+      "mcp__aws-mcp__aws___get_presigned_url",
+      "mcp__aws-mcp__aws___get_tasks"
     ]
   },
   "hooks": {
@@ -258,9 +262,9 @@
         ]
       },
       {
-        "matcher": "mcp__aws-api__call_aws",
+        "matcher": "mcp__aws-mcp__.*|mcp__aws-api__.*",
         "hooks": [
-          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so AWS calls cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
+          { "type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\"; [ -f \"$h\" ] || { echo 'BLOCKED: .claude/hooks/guard-dangerous.sh is missing, so AWS MCP calls cannot be checked (fail closed). Ask the human to restore it from git and restart Claude Code.' >&2; exit 2; }; bash \"$h\" || exit 2", "timeout": 20 }
         ]
       },
       {
