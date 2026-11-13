@@ -42,4 +42,4 @@ Still open (details in agent-report.md and follow-ups.md):
 Local run: not done (the guard blocks agents from running the app; I have
 not run it myself yet)
 Manual changes: none
-Accepted commit: (fill in after committing)
+Accepted commit: f78fb622cce39973cfb22070ae3809f266500f10
