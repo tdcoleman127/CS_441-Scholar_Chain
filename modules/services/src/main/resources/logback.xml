@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ScholarChain services logging. Owner: service-engineer.
+     The "scholarchain.services" logger emits one JSON object per line (built by StructuredLog);
+     the message is printed as-is so CloudWatch Logs can parse it. Third-party loggers (AWS SDK,
+     JDK) stay at WARN so request payloads and SDK wire traces are never logged. -->
+<configuration>
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%msg%n</pattern>
+    </encoder>
+  </appender>
+  <appender name="PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{ISO8601} %level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="scholarchain.services" level="INFO" additivity="false">
+    <appender-ref ref="JSON"/>
+  </logger>
+
+  <root level="WARN">
+    <appender-ref ref="PLAIN"/>
+  </root>
+</configuration>
