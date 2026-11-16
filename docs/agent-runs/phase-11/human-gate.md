@@ -37,4 +37,4 @@ Previous Phases:
 | 11 | Cross-module and adversarial | contract tests | 191/191 |
 | **All** | | **`sbt -batch check` exit 0** | **760 tests: 758 passed, 0 failed, 2 skipped** |
 
-Accepted commit: 
+Accepted commit: 85067146fc04ef56a07b157c477c784534da696d
