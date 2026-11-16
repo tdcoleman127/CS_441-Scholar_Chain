@@ -42,3 +42,56 @@ shared-name-token n=   3 TP=  0 FP=  0 TN=  3 FN=  0 U+=  0 U-=  0 P=n/a n/a R=n
 shared-researcher-id n=   7 TP=  6 FP=  1 TN=  0 FN=  0 U+=  0 U-=  0 P=0.857 [0.487, 0.974] R=1.000 [0.610, 1.000] F1=0.923 coverage=1.000 unresolved=0.000
 spelling-variant n=   6 TP=  2 FP=  0 TN=  0 FN=  3 U+=  0 U-=  1 P=1.000 [0.342, 1.000] R=0.400 [0.118, 0.769] F1=0.571 coverage=0.833 unresolved=0.167
 [success] Total time: 2 s, completed Nov 8, 2026, 10:53:14 PM
+
+[info] [launcher] getting org.scala-sbt sbt 1.12.15  (this may take some time)...
+[info] [launcher] getting Scala 2.12.21 (for sbt)...
+[info] welcome to sbt 1.12.15 (Oracle Corporation Java 21.0.6)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project\target\scala-2.12\sbt-1.0\classes ...
+[info] Non-compiled module 'compiler-bridge_2.12' for Scala 2.12.21. Compiling...
+[info]   Compilation completed in 11.171s.
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] compiling 1 Scala source to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\target\scala-2.12\sbt-1.0\classes ...
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/C:/Users/figge/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] compiling 14 Scala sources to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\core\target\scala-3.3.8\classes ...
+[info] compiling 9 Scala sources to C:\Users\figge\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\entity-resolution\target\scala-3.3.8\classes ...
+[info] running edu.uic.cs441.scholarchain.er.WorksheetEvalMain modules/entity-resolution/gold/v1/labeling-worksheet-v1.csv --labeler TC
+worksheet sha256=449c3b828d8495ca999a2d05d1cdc7b0f42fdca07a6ac7b627a66a1e163152e4
+ER evaluation, policy er-policy-v5, features er-features-v4
+labeled=48 unlabeled=0 unsure=0 untraced=0 malformed=0
+Confusion by match path (U+/U- = unresolved or conflict, labeled match / non-match; P and R with Wilson 95% intervals):
+exact-id         n=   8 TP=  6 FP=  1 TN=  0 FN=  0 U+=  0 U-=  1 P=0.857 [0.487, 0.974] R=1.000 [0.610, 1.000] F1=0.923 coverage=0.875 unresolved=0.125
+deterministic    n=  17 TP=  2 FP=  0 TN=  8 FN=  7 U+=  0 U-=  0 P=1.000 [0.342, 1.000] R=0.222 [0.063, 0.547] F1=0.364 coverage=1.000 unresolved=0.000
+probabilistic    n=  23 TP=  0 FP=  0 TN=  0 FN=  0 U+=  8 U-= 15 P=n/a n/a R=0.000 [0.000, 0.324] F1=n/a coverage=0.000 unresolved=1.000
+llm-adjudicated  n=   0 TP=  0 FP=  0 TN=  0 FN=  0 U+=  0 U-=  0 P=n/a n/a R=n/a n/a F1=n/a coverage=n/a unresolved=n/a
+overall          n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+Threshold sweep, accept varied (reject fixed):
+a=0.60 r=0.55    n=  48 TP= 11 FP=  4 TN=  8 FN=  7 U+=  5 U-= 13 P=0.733 [0.480, 0.891] R=0.478 [0.292, 0.670] F1=0.579 coverage=0.625 unresolved=0.375
+a=0.65 r=0.55    n=  48 TP= 11 FP=  3 TN=  8 FN=  7 U+=  5 U-= 14 P=0.786 [0.524, 0.924] R=0.478 [0.292, 0.670] F1=0.595 coverage=0.604 unresolved=0.396
+a=0.70 r=0.55    n=  48 TP= 11 FP=  3 TN=  8 FN=  7 U+=  5 U-= 14 P=0.786 [0.524, 0.924] R=0.478 [0.292, 0.670] F1=0.595 coverage=0.604 unresolved=0.396
+a=0.75 r=0.55    n=  48 TP= 11 FP=  3 TN=  8 FN=  7 U+=  5 U-= 14 P=0.786 [0.524, 0.924] R=0.478 [0.292, 0.670] F1=0.595 coverage=0.604 unresolved=0.396
+a=0.80 r=0.55    n=  48 TP= 10 FP=  2 TN=  8 FN=  7 U+=  6 U-= 15 P=0.833 [0.552, 0.953] R=0.435 [0.256, 0.632] F1=0.571 coverage=0.563 unresolved=0.438
+a=0.85 r=0.55    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.90 r=0.55    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.95 r=0.55    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+Threshold sweep, reject varied (accept fixed):
+a=0.85 r=0.30    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.85 r=0.40    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.85 r=0.50    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.85 r=0.55    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.85 r=0.60    n=  48 TP=  8 FP=  1 TN=  8 FN=  7 U+=  8 U-= 16 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.500 unresolved=0.500
+a=0.85 r=0.70    n=  48 TP=  8 FP=  1 TN= 17 FN=  8 U+=  7 U-=  7 P=0.889 [0.565, 0.980] R=0.348 [0.188, 0.551] F1=0.500 coverage=0.708 unresolved=0.292
+Confusion by selection stratum:
+different-name   n=   4 TP=  0 FP=  0 TN=  3 FN=  1 U+=  0 U-=  0 P=n/a n/a R=0.000 [0.000, 0.793] F1=n/a coverage=1.000 unresolved=0.000
+homonym-number-suffix n=   7 TP=  1 FP=  0 TN=  0 FN=  0 U+=  3 U-=  3 P=1.000 [0.207, 1.000] R=0.250 [0.046, 0.699] F1=0.400 coverage=0.143 unresolved=0.857
+identical-name-other-record n=   9 TP=  0 FP=  0 TN=  0 FN=  0 U+=  3 U-=  6 P=n/a n/a R=0.000 [0.000, 0.561] F1=n/a coverage=0.000 unresolved=1.000
+initials-or-middle-name n=   6 TP=  0 FP=  0 TN=  0 FN=  0 U+=  1 U-=  5 P=n/a n/a R=0.000 [0.000, 0.793] F1=n/a coverage=0.000 unresolved=1.000
+name-order       n=   1 TP=  0 FP=  0 TN=  0 FN=  1 U+=  0 U-=  0 P=n/a n/a R=0.000 [0.000, 0.793] F1=n/a coverage=1.000 unresolved=0.000
+same-record-other-position n=   5 TP=  0 FP=  0 TN=  2 FN=  2 U+=  0 U-=  1 P=n/a n/a R=0.000 [0.000, 0.658] F1=n/a coverage=0.800 unresolved=0.200
+shared-name-token n=   3 TP=  0 FP=  0 TN=  3 FN=  0 U+=  0 U-=  0 P=n/a n/a R=n/a n/a F1=n/a coverage=1.000 unresolved=0.000
+shared-researcher-id n=   7 TP=  6 FP=  1 TN=  0 FN=  0 U+=  0 U-=  0 P=0.857 [0.487, 0.974] R=1.000 [0.610, 1.000] F1=0.923 coverage=1.000 unresolved=0.000
+spelling-variant n=   6 TP=  1 FP=  0 TN=  0 FN=  3 U+=  1 U-=  1 P=1.000 [0.207, 1.000] R=0.200 [0.036, 0.624] F1=0.333 coverage=0.667 unresolved=0.333
+[success] Total time: 38 s, completed Nov 15, 2026, 10:31:14 PM
