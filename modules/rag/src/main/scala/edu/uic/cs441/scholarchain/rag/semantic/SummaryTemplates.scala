@@ -95,7 +95,11 @@ object SummaryTemplates:
     if text.length > MaxRenderedChars then Left(s"rendered text exceeds $MaxRenderedChars chars")
     else if !IdFormat.isValid(IdKind.Run, provenance.pipelineRunId) then
       Left("provenance.pipelineRunId is not a run:v1 ID")
-    else if provenance.sourceRecordId.trim.isEmpty then Left("provenance.sourceRecordId is blank")
+    else if provenance.sourceRecordId == null || provenance.sourceRecordId.trim.isEmpty then
+      Left("provenance.sourceRecordId is blank")
+    else if !MetadataFormat.isToken(provenance.sourceRecordId) then
+      // RR5: the read-back check drops any hit outside this format, so rag never writes one.
+      Left(s"provenance.sourceRecordId is outside ${MetadataFormat.Version}")
     else
       Right(SemanticSummary(
         entityId,

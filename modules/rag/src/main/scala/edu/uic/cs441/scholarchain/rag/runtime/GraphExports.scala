@@ -102,51 +102,95 @@ object GraphExportReader:
             }.map(_.reverse)
     yield rows
 
-  private def core[A: ReadWriter: Validator](line: String): Either[String, A] =
-    Try(read[A](line)).toEither.left
-      .map(_ => "unreadable")
-      .flatMap(a => Validation.validate(a).left.map(_.map(_.message).mkString("; ")))
+  /**
+   * Total row parser: decoding AND validation run inside one `Try`, so a `null` line, a `null`
+   * field, or a validator that dereferences a missing value is a typed Left, never an exception
+   * (M4). A row whose value decodes to `null` is refused before validation.
+   */
+  private def total[A](line: String)(decode: String => A)(check: A => Either[String, Unit])
+      : Either[String, A] =
+    Try(decode(line)).toEither.left.map(_ => "unreadable").flatMap { a =>
+      if a == null then Left("row is null")
+      else Try(check(a)).toEither.left.map(_ => "invalid row (missing field)").flatten.map(_ => a)
+    }
+
+  private def runOk(runId: String, prov: Provenance): Either[String, Unit] =
+    if prov == null then Left("provenance is absent")
+    else if prov.pipelineRunId != runId then Left("provenance run ID is not the release run")
+    else Right(())
+
+  /**
+   * A core record: decoded, then core-validated, then (graph-export-reader-v2) its provenance run
+   * ID must be the release run, as for the rag-local rows.
+   */
+  private def core[A: ReadWriter: Validator](runId: String, prov: A => Provenance)(
+      line: String
+  ): Either[String, A] =
+    total(line)(read[A](_)) { a =>
+      Validation.validate(a).left.map(_.map(_.message).mkString("; ")).flatMap(_ =>
+        runOk(runId, prov(a))
+      )
+    }
 
   private def rowOk(
       runId: String,
       prov: Provenance,
+      strings: List[(String, String)],
       ids: List[(IdKind, String)]
   ): Either[String, Unit] =
-    if prov.pipelineRunId != runId then Left("provenance run ID is not the release run")
-    else
-      ids.find((k, v) => !IdFormat.isValid(k, v)) match
-        case Some((k, v)) => Left(s"malformed ${k.prefix} ID '$v'")
-        case None         => Right(())
+    strings.collectFirst { case (name, v) if v == null || v.trim.isEmpty => name } match
+      case Some(name) => Left(s"$name is absent or blank")
+      case None       =>
+        runOk(runId, prov).flatMap { _ =>
+          ids.find((k, v) => v == null || !IdFormat.isValid(k, v)) match
+            case Some((k, v)) => Left(s"malformed ${k.prefix} ID '${String.valueOf(v)}'")
+            case None         => Right(())
+        }
 
+  private def graphMetricsRow(runId: String)(line: String): Either[String, GraphMetricsRow] =
+    total(line)(read[GraphMetricsRow](_)) { r =>
+      rowOk(
+        runId,
+        r.provenance,
+        List(
+          "componentId"      -> r.componentId,
+          "policyVersion"    -> r.policyVersion,
+          "algorithmVersion" -> r.algorithmVersion
+        ),
+        List(IdKind.Researcher -> r.researcherId, IdKind.Community -> r.communityId)
+      )
+    }
+
+  private def communityRow(runId: String)(line: String): Either[String, CommunityRow] =
+    total(line)(read[CommunityRow](_)) { r =>
+      if r.memberIds == null then Left("memberIds is absent")
+      else
+        rowOk(
+          runId,
+          r.provenance,
+          List("policyVersion" -> r.policyVersion, "algorithmVersion" -> r.algorithmVersion),
+          (IdKind.Community -> r.communityId) :: r.memberIds.map(IdKind.Researcher -> _)
+        )
+    }
+
+  /**
+   * Loads one release. Total: every malformed input (a missing or oversized object, an unreadable
+   * or `null` line, a `null` or blank field, a malformed ID, a row from another run) is a Left; it
+   * never throws. Duplicate metric rows per researcher and window are NOT rejected here: the
+   * verifier marks disagreeing duplicates CONFLICTING (V4), and the presentation of withheld values
+   * is the service's concern (D2).
+   */
   def load(objects: ObjectStore, runId: String): Either[String, GraphFacts] =
-    for
-      _  <- Either.cond(IdFormat.isValid(IdKind.Run, runId), (), "release run ID is not run:v1")
-      rs <- lines(objects, Researchers, runId, core[CanonicalResearcher])
-      ms <- lines(objects, Metrics, runId, core[ResearcherMetrics])
-      gs <- lines(
-        objects,
-        GraphMetrics,
-        runId,
-        l =>
-          Try(read[GraphMetricsRow](l)).toEither.left.map(_ => "unreadable").flatMap(r =>
-            rowOk(
-              runId,
-              r.provenance,
-              List(IdKind.Researcher -> r.researcherId, IdKind.Community -> r.communityId)
-            ).map(_ => r)
-          )
-      )
-      cs <- lines(
-        objects,
-        Communities,
-        runId,
-        l =>
-          Try(read[CommunityRow](l)).toEither.left.map(_ => "unreadable").flatMap(r =>
-            rowOk(
-              runId,
-              r.provenance,
-              (IdKind.Community -> r.communityId) :: r.memberIds.map(IdKind.Researcher -> _)
-            ).map(_ => r)
-          )
-      )
-    yield GraphFacts(runId, rs, ms, gs, cs)
+    Try {
+      for
+        _ <- Either.cond(
+          runId != null && IdFormat.isValid(IdKind.Run, runId),
+          (),
+          "release run ID is not run:v1"
+        )
+        rs <- lines(objects, Researchers, runId, core[CanonicalResearcher](runId, _.provenance))
+        ms <- lines(objects, Metrics, runId, core[ResearcherMetrics](runId, _.provenance))
+        gs <- lines(objects, GraphMetrics, runId, graphMetricsRow(runId))
+        cs <- lines(objects, Communities, runId, communityRow(runId))
+      yield GraphFacts(runId, rs, ms, gs, cs)
+    }.toEither.left.map(_ => "export load failed").flatten

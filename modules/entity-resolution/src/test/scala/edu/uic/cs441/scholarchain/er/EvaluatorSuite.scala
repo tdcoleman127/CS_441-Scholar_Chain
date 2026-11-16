@@ -34,7 +34,9 @@ class EvaluatorSuite extends munit.FunSuite:
     assertEquals(e.overall.unresolvedRate, Some(2.0 / 9))
     val sweep = e.sweepAccept.map(r => r.accept -> r.overall).toMap
     assertEquals((sweep(0.95).tp, sweep(0.95).fp), (2, 0)) // 0.90 and 0.86 move to unresolved
-    assertEquals((sweep(0.60).tp, sweep(0.60).fp), (4, 1)) // 0.70 moves to accepted
+    // er-policy-v4: the fixture lines predate v3 (no `corroborated`), so the unresolved 0.70 pair
+    // stays unresolved at 0.60: a missing corroboration never moves an item to accepted (v3: (4, 1)).
+    assertEquals((sweep(0.60).tp, sweep(0.60).fp), (3, 1))
     val rej = e.sweepReject.map(r => r.reject -> r.overall).toMap
     assertEquals((rej(0.30).fn, rej(0.30).undecidedPos), (0, 2)) // 0.40 moves to unresolved
     val (lo, hi) = Evaluator.wilson(1, 2).get

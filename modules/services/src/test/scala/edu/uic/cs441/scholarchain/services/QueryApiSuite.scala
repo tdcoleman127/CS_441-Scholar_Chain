@@ -253,6 +253,24 @@ class QueryApiSuite extends munit.FunSuite:
     assertEquals(text.status, 415)
     val method = e.get("/v1/query")
     assertEquals(method.status, 405)
+    // NIT-2: exactly application/json; parameters, optional whitespace, and case are tolerated.
+    def ct(v: String) =
+      e.call("POST", "/v1/query", CoauthorsOfAlice, headers = Map("Content-Type" -> v)).status
+    List("application/json", "application/json;charset=utf-8", " Application/JSON ; charset=UTF-8")
+      .foreach(v => assertEquals(ct(v), 200, v))
+    List(
+      "application/jsonp",
+      "application/jsonp; charset=utf-8",
+      "application/json-seq",
+      "application/json+x",
+      "application/json, text/plain",
+      "application/ json",
+      ""
+    ).foreach { v =>
+      val r = e.call("POST", "/v1/query", CoauthorsOfAlice, headers = Map("Content-Type" -> v))
+      assertEquals(r.status, 415, v)
+      assertEquals(json(r)("error").str, "UNSUPPORTED_MEDIA_TYPE", v)
+    }
     assertEquals(method.header("Allow"), Some("POST"))
     assertEquals(e.get("/v2/query").status, 404)
     assertEquals(json(e.get("/v1/jobs/not-a-job"))("error").str, "INVALID_PARAMETER")

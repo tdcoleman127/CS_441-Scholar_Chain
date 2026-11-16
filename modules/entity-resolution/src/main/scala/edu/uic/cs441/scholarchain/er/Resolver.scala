@@ -105,12 +105,23 @@ object PairInput:
     )
 
 /**
- * One entity-resolution output (ER-local wire record, `schemaVersion` 1). `provenance` is the ER
- * run's own provenance (`scholarchain-pipeline`, the pair ID, the ER run ID); `provenanceLow` and
- * `provenanceHigh` are the source records of the two sides (CLAUDE.md law 3). `outcome` and
- * `decider` reuse the core enums; `status` and `path` carry what core `MatchOutcome` cannot
- * (conflict and the match path).
+ * One entity-resolution output (ER-local wire record, `schemaVersion` 2, see
+ * [[Resolver.RecordSchemaVersion]]). `provenance` is the ER run's own provenance
+ * (`scholarchain-pipeline`, the pair ID, the ER run ID); `provenanceLow` and `provenanceHigh` are
+ * the source records of the two sides (CLAUDE.md law 3). `outcome` and `decider` reuse the core
+ * enums; `status` and `path` carry what core `MatchOutcome` cannot (conflict and the match path).
+ *
+ * Schema version 2 (er-policy-v3) adds two trailing fields, always written:
+ *   - `scoreUpper`: the upper score bound (missing features counted as 1); `score` is the lower
+ *     bound (missing features counted as 0). Both null when no score was computed.
+ *   - `corroborated`: whether a name-independent feature corroborates the pair (policy
+ *     `corroboration`); null when the decision did not reach the probabilistic path.
+ * Version 1 lines (without the two fields) still read: both default to null.
+ *
+ * Merge veto (human decision STRICT, 2026-11-14, rule c): every record whose status is not
+ * `accepted` ([[blocksMerge]]) means the two mentions must not be joined by any identity closure.
  */
+@upickle.implicits.serializeDefaults(true)
 final case class ResolutionRecord(
     schemaVersion: Int,
     decisionId: String,
@@ -132,38 +143,126 @@ final case class ResolutionRecord(
     reasonCodes: List[String],
     provenance: Provenance,
     provenanceLow: Provenance,
-    provenanceHigh: Provenance
-) derives ReadWriter
+    provenanceHigh: Provenance,
+    scoreUpper: Option[Double] = None,
+    corroborated: Option[Boolean] = None
+) derives ReadWriter:
+  /** True for rejected, unresolved, and conflict: the two members must never be joined. */
+  def blocksMerge: Boolean = status != ResolutionStatus.Accepted
+
+/**
+ * Bounds of the probabilistic score (er-policy-v3). With W the sum of the scope's positive weights
+ * and v the component of each computable feature: `lower` = sum(w * v) / W (a missing feature
+ * counts 0), `upper` = (sum(w * v) + sum of missing weights) / W (a missing feature counts 1). So
+ * filling in a missing feature with any value never lowers `lower` and never raises `upper`.
+ * `independentWeight` is the weight of the computable name-independent features (coauthorOverlap,
+ * titleSimilarity, yearDistance), compared with the policy's min-evidence-weight.
+ */
+final case class ScoreBounds(lower: Double, upper: Double, independentWeight: Double)
 
 object Resolver:
 
-  val RecordSchemaVersion: Int = 1
+  /** Wire version of [[ResolutionRecord]]; 2 since er-policy-v3 (adds scoreUpper, corroborated). */
+  val RecordSchemaVersion: Int = 2
 
   def decisionId(pairId: String, policyVersion: String): String =
     "erdecision:v1:" +
       CanonicalHash.hashFields(Seq("scholarchain:er-decision:v1", pairId, policyVersion))
 
   /**
-   * Weighted mean of the computable feature scores, renormalized over their weights, with the total
-   * weight used. idAgreement is excluded (it routes to the exact-ID or conflict path).
+   * Score bounds over every positively weighted feature of the scope (er-policy-v3, D3). Unlike
+   * er-policy-v2 the weights are NOT renormalized over the computable features, so a missing
+   * feature can never raise the score. idAgreement is excluded (it routes to the exact-ID or
+   * conflict path). None when the scope has no positive weight.
    */
-  def score(p: ScoringPolicy, scope: String, f: FeatureVector): (Option[Double], Double) =
+  def score(p: ScoringPolicy, scope: String, f: FeatureVector): Option[ScoreBounds] =
     val w     = p.weights(scope)
     val parts = List(
-      f.nameSimilarity.map(_ -> w.nameSimilarity),
-      f.initialsCompatibility.map(_ -> w.initialsCompatibility),
-      f.coauthorOverlap.map(_ -> w.coauthorOverlap),
-      f.titleSimilarity.map(_ -> w.titleSimilarity),
-      f.yearDistance.map(d => math.max(0.0, 1.0 - d / p.yearScale) -> w.yearDistance)
-    ).flatten.filter(_._2 > 0.0)
+      (f.nameSimilarity, w.nameSimilarity, false),
+      (f.initialsCompatibility, w.initialsCompatibility, false),
+      (f.coauthorOverlap, w.coauthorOverlap, true),
+      (f.titleSimilarity, w.titleSimilarity, true),
+      (f.yearDistance.map(d => math.max(0.0, 1.0 - d / p.yearScale)), w.yearDistance, true)
+    ).filter(_._2 > 0.0)
     val total = parts.map(_._2).sum
-    if total <= 0.0 then (None, 0.0) else (Some(parts.map((v, wt) => v * wt).sum / total), total)
+    Option.when(total > 0.0) {
+      val observed = parts.collect { case (Some(v), wt, _) => v * wt }.sum
+      val missing  = parts.collect { case (None, wt, _) => wt }.sum
+      val indep    = parts.collect { case (Some(_), wt, true) => wt }.sum
+      ScoreBounds(observed / total, (observed + missing) / total, indep)
+    }
+
+  /**
+   * Corroboration (er-policy-v3, D3-floor): positive evidence from a feature that does not come
+   * from the name. yearDistance never corroborates; nameSimilarity and initialsCompatibility never
+   * do, so name plus initials alone can never reach an accept.
+   */
+  def corroborated(p: ScoringPolicy, f: FeatureVector): Boolean =
+    f.coauthorOverlap.exists(_ >= p.corroboration.coauthorOverlapMin) ||
+      f.titleSimilarity.exists(_ >= p.corroboration.titleSimilarityMin)
 
   /** Band of a probabilistic score: accept at or above `accept`, reject strictly below `reject`. */
   def band(s: Double, accept: Double, reject: Double): ResolutionStatus =
-    if s >= accept then ResolutionStatus.Accepted
-    else if s >= reject then ResolutionStatus.Unresolved
-    else ResolutionStatus.Rejected
+    band(s, s, corroborated = true, accept, reject)
+
+  /**
+   * Band of score bounds: accepted when `lower >= accept` and corroborated; rejected when
+   * `upper < reject`; otherwise unresolved. A feature that is MISSING (None) can therefore cause
+   * neither an accept nor a reject: it counts 0 on `lower` and 1 on `upper`.
+   *
+   * Exception (M1, er-features-v3): an empty coauthor list is not missing. When both sides have no
+   * coauthors, coauthorOverlap is an OBSERVED 0.0 (as the Hadoop contextJaccard), so `upper` loses
+   * the coauthor weight share that a missing value would add, and it can, together with other low
+   * observed features, push a pair below `reject` (for example a mononym single-author pair with
+   * disjoint titles and a 20-year gap is rejected only because of it). It never helps an accept:
+   * 0.0 never corroborates and adds nothing to `lower`. Such a reject is a merge veto, so it is
+   * precision-safe.
+   */
+  def band(
+      lower: Double,
+      upper: Double,
+      corroborated: Boolean,
+      accept: Double,
+      reject: Double
+  ): ResolutionStatus =
+    if lower >= accept && corroborated then ResolutionStatus.Accepted
+    else if upper < reject then ResolutionStatus.Rejected
+    else ResolutionStatus.Unresolved
+
+  /** Reason-code prefix of a decision whose accept a missing value blocked (er-policy-v4). */
+  val AcceptBlocked: String   = "accept-blocked:"
+  val SameWorkUnknown: String = "same-work-unknown"
+  val InitialsUnknown: String = "initials-unknown"
+
+  /**
+   * Reason code (er-policy-v4) of an unresolved pair with `lower < reject <= upper`: some
+   * completion of its missing features would reject it, so it is not sent to the adjudicator.
+   * Otherwise removing a feature could raise `upper` from below reject into the band and let an
+   * adjudicator accept a pair that its observed evidence rejected.
+   */
+  val BoundsStraddleReject: String = "bounds-straddle-reject"
+
+  /**
+   * Missing values that block every non-ID accept (er-policy-v4, Phase 11 repair-02; human decision
+   * STRICT). A value whose observed form can veto the pair must not, when missing, let the pair be
+   * accepted, or the absence would be worth more than the evidence:
+   *   - `same-work-unknown`: a mention pair whose sameWork is unknown, when reject-same-work is on
+   *     (sameWork = true rejects). Both production paths always set sameWork.
+   *   - `initials-unknown`: a mention pair whose initialsCompatibility is not computable (a mononym
+   *     or name without given names on the entity-view path; every Hadoop proxy pair), when
+   *     reject-incompatible-initials is on (initials = 0 rejects).
+   * A blocked pair is still rejected when its score bounds say so, and is never adjudicated.
+   * Identifier absence is not in this list: see [[decide]].
+   */
+  def acceptBlocks(p: ScoringPolicy, in: PairInput): List[String] =
+    val mention = in.scope == "mention"
+    val d       = p.deterministic
+    List(
+      Option.when(mention && d.rejectSameWork && in.sameWork.isEmpty)(SameWorkUnknown),
+      Option.when(
+        mention && d.rejectIncompatibleInitials && in.features.initialsCompatibility.isEmpty
+      )(InitialsUnknown)
+    ).flatten
 
   /**
    * Decides one pair. Order: ID conflict, same-work ID agreement, exact ID, deterministic rules,
@@ -177,6 +276,40 @@ object Resolver:
    *   - F2: the deterministic mention accept also needs `initialsCompatibility == 1.0`. A pair
    *     whose initials are not computable (every Hadoop raw-feature proxy pair, and mononyms) goes
    *     to the probabilistic path, so a token-set label match never claims `name-exact`.
+   *
+   * Policy er-policy-v3 (Phase 11 repair-01, human decision STRICT 2026-11-14), probabilistic path:
+   *   - D3: the score is the pair of bounds of [[score]]; missing evidence never raises it.
+   *     Accepted needs `lower >= accept`, rejected needs `upper < reject` ([[band]]).
+   *   - D3-floor: accepted also needs [[corroborated]]; a pair below min-evidence-weight of
+   *     name-independent evidence is unresolved (`insufficient-evidence`); an uncorroborated pair
+   *     is unresolved (`uncorroborated`) and never reaches the adjudicator, so neither the score
+   *     nor an adjudicator can accept on name plus initials alone.
+   *
+   * Policy er-policy-v4 (Phase 11 repair-02, human decisions STRICT and RR3 2026-11-15): no missing
+   * value moves a decision to Accepted. An accept condition needs an observed value; a veto fires
+   * only on an observed value, and its missing value blocks every non-ID accept instead.
+   *   - RR3: the deterministic mention accept needs an observed yearDistance <=
+   *     mention-max-year-gap. A missing year falls through to the scored path, where it counts 0 on
+   *     the lower bound and never corroborates.
+   *   - [[acceptBlocks]]: unknown sameWork (mention) or unknown initials (mention) block the
+   *     deterministic, probabilistic, and adjudicated accepts (`accept-blocked:<why>`, unresolved,
+   *     never adjudicated). An ID-agreeing mention pair with unknown sameWork is unresolved, not
+   *     accepted, because sameWork = true would make it a conflict.
+   *   - Adjudicator band: a pair is adjudicated only when `lower >= reject` (and corroborated and
+   *     not blocked). A pair with `lower < reject <= upper` is unresolved
+   *     ([[BoundsStraddleReject]]): only its missing features keep it out of the reject band.
+   *   - Not changed: the absence of an identifier. An ID conflict is a contradiction between two
+   *     present authorities (conflict output); a missing identifier is the normal case for DBLP, so
+   *     treating it as a blocked veto would leave only the exact-ID path. An identifier that fails
+   *     validation is not an identifier ([[Identifiers.normalize]]).
+   *
+   * Policy er-policy-v5 (Phase 11 repair-03, review-02 F3, human decision STRICT): the
+   * deterministic mention accept (`name-exact+coauthor-overlap`) and work accept
+   * (`title-exact+year`) also need [[corroborated]]. [[ScoringPolicy.validated]] additionally keeps
+   * their minimums at or above the corroboration minimums, so this check is defense in depth: a
+   * policy built with `copy` (bypassing validation) with `mention-coauthor-min = 0` still cannot
+   * accept two single-author mentions whose empty coauthor lists observe 0.0 (M1). A pair that
+   * fails it falls through to the scored path, which also needs corroboration.
    */
   def decide(
       p: ScoringPolicy,
@@ -185,9 +318,10 @@ object Resolver:
       adjudicator: Adjudicator = AbstainAdjudicator
   ): ResolutionRecord =
     require(IdFormat.isValid(IdKind.Run, runId), s"runId must be a run:v1 ID, got '$runId'")
-    val f                = in.features
-    val d                = p.deterministic
-    val (sc, evidenceWt) = score(p, in.scope, f)
+    val f      = in.features
+    val d      = p.deterministic
+    val bounds = score(p, in.scope, f)
+    val corr   = corroborated(p, f)
     def out(
         st: ResolutionStatus,
         path: MatchPath,
@@ -196,7 +330,8 @@ object Resolver:
         reasons: List[String],
         adj: Option[String] = None
     ) =
-      val outcome = st match
+      val probabilistic = path == MatchPath.Probabilistic || path == MatchPath.LlmAdjudicated
+      val outcome       = st match
         case ResolutionStatus.Accepted => MatchOutcome.Merge
         case ResolutionStatus.Rejected => MatchOutcome.NonMatch
         case _                         => MatchOutcome.NeedsReview
@@ -212,7 +347,7 @@ object Resolver:
         path,
         outcome,
         decider,
-        sc,
+        bounds.map(_.lower),
         conf,
         p.policyVersion,
         Features.SpecVersion,
@@ -221,10 +356,16 @@ object Resolver:
         reasons ++ in.extraReasons,
         Provenance(SourceType.ScholarChainPipeline, in.pairId, runId),
         in.provenanceLow,
-        in.provenanceHigh
+        in.provenanceHigh,
+        bounds.map(_.upper),
+        Option.when(probabilistic)(corr)
       )
     val agreeCodes   = in.ids.agreements.map(ns => s"id-agree:${ns.wire}")
-    val mentionOnOne = in.scope == "mention" && in.sameWork.contains(true)
+    val mention      = in.scope == "mention"
+    val mentionOnOne = mention && in.sameWork.contains(true)
+    val workUnknown  = mention && in.sameWork.isEmpty
+    // er-policy-v4: a missing value that would block an accept when observed blocks it too.
+    val blocks = acceptBlocks(p, in)
     if in.ids.hasConflict then
       out(
         ResolutionStatus.Conflict,
@@ -240,6 +381,14 @@ object Resolver:
         MatchDecider.Rule,
         1.0,
         "same-work+id-agree" :: agreeCodes
+      )
+    else if in.ids.hasAgreement && workUnknown then
+      out(
+        ResolutionStatus.Unresolved,
+        MatchPath.ExactId,
+        MatchDecider.Rule,
+        0.0,
+        s"$AcceptBlocked$SameWorkUnknown" :: agreeCodes
       )
     else if in.ids.hasAgreement then
       out(ResolutionStatus.Accepted, MatchPath.ExactId, MatchDecider.Rule, 1.0, agreeCodes)
@@ -259,10 +408,10 @@ object Resolver:
         1.0,
         List("initials-incompatible")
       )
-    else if in.scope == "mention" && f.nameSimilarity.exists(_ >= d.mentionNameMin) &&
+    else if mention && blocks.isEmpty && corr && f.nameSimilarity.exists(_ >= d.mentionNameMin) &&
       f.initialsCompatibility.contains(1.0) &&
       f.coauthorOverlap.exists(_ >= d.mentionCoauthorMin) &&
-      f.yearDistance.forall(_ <= d.mentionMaxYearGap)
+      f.yearDistance.exists(_ <= d.mentionMaxYearGap)
     then
       out(
         ResolutionStatus.Accepted,
@@ -271,7 +420,7 @@ object Resolver:
         1.0,
         List("name-exact+coauthor-overlap")
       )
-    else if in.scope == "work" && f.titleSimilarity.exists(_ >= d.workTitleMin) &&
+    else if in.scope == "work" && corr && f.titleSimilarity.exists(_ >= d.workTitleMin) &&
       f.yearDistance.exists(_ <= d.workMaxYearGap)
     then
       out(
@@ -282,7 +431,7 @@ object Resolver:
         List("title-exact+year")
       )
     else
-      sc match
+      bounds match
         case None =>
           out(
             ResolutionStatus.Unresolved,
@@ -291,7 +440,7 @@ object Resolver:
             0.0,
             List("no-features")
           )
-        case Some(_) if evidenceWt < p.minEvidenceWeight =>
+        case Some(b) if b.independentWeight < p.minEvidenceWeight =>
           out(
             ResolutionStatus.Unresolved,
             MatchPath.Probabilistic,
@@ -299,11 +448,37 @@ object Resolver:
             0.0,
             List("insufficient-evidence")
           )
-        case Some(s) =>
-          band(s, p.accept, p.reject) match
-            case ResolutionStatus.Unresolved => adjudicate(p, in, s, adjudicator, out)
+        case Some(b) =>
+          band(b.lower, b.upper, corr, p.accept, p.reject) match
+            case ResolutionStatus.Unresolved if !corr =>
+              out(
+                ResolutionStatus.Unresolved,
+                MatchPath.Probabilistic,
+                MatchDecider.Model,
+                0.0,
+                List("score-band:unresolved", "uncorroborated")
+              )
+            case st if st != ResolutionStatus.Rejected && blocks.nonEmpty =>
+              // Accepted or the adjudicator band: never accepted, never adjudicated.
+              out(
+                ResolutionStatus.Unresolved,
+                MatchPath.Probabilistic,
+                MatchDecider.Model,
+                0.0,
+                "score-band:unresolved" :: blocks.map(AcceptBlocked + _)
+              )
+            case ResolutionStatus.Unresolved if b.lower < p.reject =>
+              // Only missing features keep this pair out of the reject band: not adjudicated.
+              out(
+                ResolutionStatus.Unresolved,
+                MatchPath.Probabilistic,
+                MatchDecider.Model,
+                0.0,
+                List("score-band:unresolved", BoundsStraddleReject)
+              )
+            case ResolutionStatus.Unresolved => adjudicate(p, in, b.lower, adjudicator, out)
             case st                          =>
-              val conf = if st == ResolutionStatus.Accepted then s else 1.0 - s
+              val conf = if st == ResolutionStatus.Accepted then b.lower else 1.0 - b.upper
               out(
                 st,
                 MatchPath.Probabilistic,

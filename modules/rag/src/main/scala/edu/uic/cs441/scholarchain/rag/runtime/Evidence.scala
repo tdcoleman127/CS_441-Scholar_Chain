@@ -3,7 +3,9 @@ package edu.uic.cs441.scholarchain.rag.runtime
 import edu.uic.cs441.scholarchain.core.SchemaVersion
 import edu.uic.cs441.scholarchain.core.ids.{CanonicalHash, IdFormat, IdKind, StableIds}
 import edu.uic.cs441.scholarchain.core.model.*
-import edu.uic.cs441.scholarchain.rag.semantic.{SemanticContext, TextRules}
+import edu.uic.cs441.scholarchain.core.validation.Validation
+import edu.uic.cs441.scholarchain.core.validation.Validators.given
+import edu.uic.cs441.scholarchain.rag.semantic.{MetadataFormat, SemanticContext, TextRules}
 
 /**
  * One typed graph fact retrieved from a store or export. Every fact carries its window, its policy
@@ -130,10 +132,27 @@ final case class GraphEvidence(fact: GraphFact, item: EvidenceItem):
   def evidenceId: String = item.evidenceId
 
 /**
- * The bounded evidence bundle (rag-evidence-bundle-v1). Graph evidence and semantic context are
- * kept in separate fields. `core` is the core [[EvidenceBundle]] (graph items first, then semantic
- * text-chunk items) and passes core validation, so storage can persist it. Semantic item IDs are
- * listed in `semanticEvidenceIds` so the verifier can refuse them as support for graph claims.
+ * The bounded evidence bundle (rag-evidence-bundle-v2). Graph evidence and semantic context are
+ * kept in separate fields. `core` is the core [[EvidenceBundle]] and passes core validation, so
+ * storage can persist it. Semantic item IDs are listed in `semanticEvidenceIds` so the verifier can
+ * refuse them as support for graph claims.
+ *
+ * `core` is a deterministic function of its evidence items, which is exactly what the core bundle
+ * ID covers (D4): items are ordered graph items first, then semantic text-chunk items, each group
+ * sorted by evidence ID, and the bundle provenance is `(scholarchain-runtime, <bundleId>, <release
+ * run>)`. Query-specific fields (the plan ID, the question) are never in `core`; the audit record
+ * links a query to its bundle (`plan` and `bundleId`).
+ *
+ * The guarantee is bounded. Two wordings of one question that retrieve the same evidence persist
+ * byte-identical bundles, so the second write is an idempotent replay instead of a
+ * conditional-write conflict, only while no bound cuts anything: at most
+ * [[EvidenceBuilder.MaxGraphItems]] unique graph facts within [[EvidenceBuilder.MaxGraphTextChars]]
+ * excerpt characters, and at most [[EvidenceBuilder.MaxSemanticItems]] semantic items.
+ * [[EvidenceBuilder.build]] applies these bounds in retrieval order, before the canonical sort.
+ * Beyond them, the same retrieved set in a different order can keep a different subset of items, so
+ * the two bundles differ, get different bundle IDs, and are persisted as two separate bundles (no
+ * conflict, but no deduplication either). Each cut graph fact is listed in `truncated`, which is
+ * not part of `core`.
  */
 final case class RagEvidenceBundle(
     version: String,
@@ -156,12 +175,17 @@ object EvidenceBuilder:
    * Builds the bundle: graph facts deduplicated by evidence ID in retrieval order, cut at
    * [[MaxGraphItems]] items and [[MaxGraphTextChars]] excerpt characters (each cut is recorded in
    * `truncated`); semantic items become text-chunk evidence only when their key is a valid chunk
-   * ID.
+   * ID, their text hash is well formed, and their provenance passes core validation (M3: an item
+   * with invalid provenance is left out, so it can never make the persisted bundle invalid) and the
+   * [[MetadataFormat]] token rule (RR5, rag-evidence-bundle-v3: a source record or run ID holding
+   * control, whitespace, or non-ASCII characters never reaches the persisted bundle).
+   *
+   * No query-specific input is taken: the persisted core bundle depends only on the evidence items
+   * and the release run (D4).
    */
   def build(
       facts: Seq[GraphFact],
       semantic: SemanticContext,
-      planId: String,
       releaseRunId: String
   ): RagEvidenceBundle =
     val unique         = facts.map(f => GraphEvidence(f, f.evidenceItem)).distinctBy(_.evidenceId)
@@ -175,8 +199,11 @@ object EvidenceBuilder:
           else (acc :+ g, used + cost, cut)
       }
     val semanticItems = semantic.items.take(MaxSemanticItems).flatMap { s =>
-      if IdFormat.isValid(IdKind.Chunk, s.vectorKey) &&
-        IdFormat.isValid(IdKind.ContentHash, s.textHash)
+      if s != null && s.vectorKey != null && s.textHash != null && s.excerpt != null &&
+        IdFormat.isValid(IdKind.Chunk, s.vectorKey) &&
+        IdFormat.isValid(IdKind.ContentHash, s.textHash) &&
+        Validation.validate(s.provenance).isRight &&
+        MetadataFormat.provenanceOk(s.provenance)
       then
         Some(
           EvidenceItem(
@@ -197,12 +224,17 @@ object EvidenceBuilder:
         )
       else None
     }.distinctBy(_.evidenceId).filterNot(i => kept.exists(_.evidenceId == i.evidenceId))
-    val items = kept.map(_.item).toList ++ semanticItems
-    val core  = EvidenceBundle(
+    // Canonical order: graph group, then semantic group, each sorted by evidence ID. Retrieval
+    // order (which can depend on the question's wording) never reaches the persisted payload's
+    // ordering. It can still decide which items survive the bounds above, because the item, text,
+    // and semantic cuts run in retrieval order before this sort.
+    val items = kept.map(_.item).toList.sortBy(_.evidenceId) ++ semanticItems.sortBy(_.evidenceId)
+    val bundleId = StableIds.evidenceBundleId(items.map(_.evidenceId))
+    val core     = EvidenceBundle(
       SchemaVersion.Current,
-      StableIds.evidenceBundleId(items.map(_.evidenceId)),
+      bundleId,
       items,
-      Provenance(SourceType.ScholarChainRuntime, planId, releaseRunId)
+      Provenance(SourceType.ScholarChainRuntime, bundleId, releaseRunId)
     )
     RagEvidenceBundle(
       RagVersions.EvidenceBundle,

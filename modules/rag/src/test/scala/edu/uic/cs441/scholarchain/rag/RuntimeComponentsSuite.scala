@@ -149,7 +149,7 @@ class RuntimeComponentsSuite extends munit.FunSuite:
     val (lo, hi) = if a < b then (a, b) else (b, a)
     GraphFact.Edge(edgeId(a, b, w), lo, hi, w, policy, n, w.startYear, w.endYear, "ptr", prov)
   private def bundle(facts: GraphFact*) =
-    EvidenceBuilder.build(facts, SemanticStage.empty, "plan:v1:" + "a" * 64, RagFixtures.runId)
+    EvidenceBuilder.build(facts, SemanticStage.empty, RagFixtures.runId)
   private def ids(b: RagEvidenceBundle) = b.graph.map(_.evidenceId)
 
   test(
@@ -298,12 +298,7 @@ class RuntimeComponentsSuite extends munit.FunSuite:
         pipelineProv(s"m$i")
       )
     )
-    val b = EvidenceBuilder.build(
-      many ++ many.take(3),
-      SemanticStage.empty,
-      "plan:v1:" + "a" * 64,
-      RagFixtures.runId
-    )
+    val b = EvidenceBuilder.build(many ++ many.take(3), SemanticStage.empty, RagFixtures.runId)
     assertEquals(b.graph.size, EvidenceBuilder.MaxGraphItems)
     assertEquals(b.truncated.size, 5)
     assertEquals(b.version, RagVersions.EvidenceBundle)
@@ -312,12 +307,7 @@ class RuntimeComponentsSuite extends munit.FunSuite:
     assert(b.graph.flatMap(_.item.excerpt).forall(_.length <= EvidenceBuilder.MaxExcerptChars))
     // Evidence IDs are content-derived and stable.
     assertEquals(
-      EvidenceBuilder.build(
-        many,
-        SemanticStage.empty,
-        "plan:v1:" + "a" * 64,
-        RagFixtures.runId
-      ).core.bundleId,
+      EvidenceBuilder.build(many, SemanticStage.empty, RagFixtures.runId).core.bundleId,
       b.core.bundleId
     )
   }

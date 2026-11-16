@@ -45,12 +45,24 @@ object Normalize:
   /**
    * Parses a raw name. `Smith, John R.` and `John R. Smith` give the same result. DBLP homonym
    * suffixes (`John Smith 0001`) are dropped: purely numeric trailing tokens are not names.
+   * Coauthor identity keeps them ([[homonymNumber]], [[Features.coauthorKey]]).
    */
   def personName(raw: String): PersonName =
-    val s       = if raw == null then "" else raw
-    val ordered = s.indexOf(',') match
-      case -1 => s
-      case i  => s.substring(i + 1) + " " + s.substring(0, i)
-    val toks = tokens(ordered).reverse.dropWhile(_.forall(_.isDigit)).reverse
+    val toks = tokens(ordered(raw)).reverse.dropWhile(_.forall(_.isDigit)).reverse
     if toks.isEmpty then PersonName(Vector.empty, "")
     else PersonName(toks.init, toks.last)
+
+  /**
+   * The DBLP homonym number of a raw name: the purely numeric trailing tokens that [[personName]]
+   * drops, in order (`Wei Wang 0001` -> `Vector("0001")`, `John Smith` -> empty). The digits are
+   * kept as written, so `0001` and `1` differ, as in the Hadoop name normalization.
+   */
+  def homonymNumber(raw: String): Vector[String] =
+    tokens(ordered(raw)).reverse.takeWhile(_.forall(_.isDigit)).reverse
+
+  /** `Last, First Middle` rewritten to `First Middle Last`; a name without a comma is unchanged. */
+  private def ordered(raw: String): String =
+    val s = if raw == null then "" else raw
+    s.indexOf(',') match
+      case -1 => s
+      case i  => s.substring(i + 1) + " " + s.substring(0, i)

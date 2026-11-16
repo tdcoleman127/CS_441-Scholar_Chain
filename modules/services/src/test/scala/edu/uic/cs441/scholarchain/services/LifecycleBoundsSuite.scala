@@ -3,10 +3,12 @@ package edu.uic.cs441.scholarchain.services
 import edu.uic.cs441.scholarchain.rag.embedding.HashedBagOfTokensEmbedder
 import edu.uic.cs441.scholarchain.rag.semantic.SemanticRetriever
 import edu.uic.cs441.scholarchain.services.TestKit.*
-import edu.uic.cs441.scholarchain.services.app.SemanticWiring
+import edu.uic.cs441.scholarchain.services.api.{NormalizedQuery, OutputOptions, WorkflowOptions}
+import edu.uic.cs441.scholarchain.services.app.*
 import edu.uic.cs441.scholarchain.storage.StorageError
 import edu.uic.cs441.scholarchain.storage.fakes.InMemoryVectorStore
 import edu.uic.cs441.scholarchain.storage.vectors.VectorIndex
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -72,6 +74,75 @@ class LifecycleBoundsSuite extends munit.FunSuite:
       "bob's oldest went"
     )
     assertEquals(e.get(s"/v1/explain/${bobIds.last}", Some(BobToken)).status, 200)
+  }
+
+  private def record(principal: String, at: Instant): QueryRecord =
+    QueryRecord(
+      RestIds.newQueryId(),
+      RestIds.newJobId(),
+      principal,
+      ExecutionMode.Asynchronous,
+      true,
+      NormalizedQuery(
+        "q",
+        ExecutionMode.Asynchronous,
+        WorkflowOptions(None, None, None, None),
+        OutputOptions(true, true, true, true, true, true)
+      ),
+      JobState.Queued,
+      "QUEUED",
+      at,
+      at,
+      None,
+      None
+    )
+
+  private val T0 = Instant.parse("2026-11-14T00:00:00Z")
+
+  private def store(maxRecords: Int) =
+    InMemoryQueryRecordStore(StoreLimits(maxRecords, 10, 3600, 100, 86400, 100, 100), () => T0)
+
+  private def fill(s: InMemoryQueryRecordStore, rs: List[QueryRecord], done: Set[QueryRecord]) =
+    rs.foreach(r => assertEquals(s.claim(r.principal, None, "h", r, T0), ClaimResult.Created))
+    done.foreach(r => s.advance(r.queryId)(_.copy(state = JobState.Succeeded, stage = "COMPLETE")))
+
+  test("N2: the global cap evicts from the principal holding the most records, running included") {
+    val s  = store(5)
+    val l1 = record("light", T0)
+    val l2 = record("light", T0)
+    val h1 = record("heavy", T0)
+    val h2 = record("heavy", T0)
+    val h3 = record("heavy", T0)
+    // Light's records are older and all terminal; heavy holds more records, one of them terminal.
+    fill(s, List(l1, l2, h1, h2, h3), Set(l1, l2, h3))
+    val c = record("third", T0)
+    assertEquals(s.claim("third", None, "h", c, T0), ClaimResult.Created)
+    assert(s.get(h3.queryId).isEmpty, "heavy's (newest) terminal record is the victim")
+    assert(List(l1, l2, h1, h2, c).forall(r => s.get(r.queryId).isDefined))
+  }
+
+  test("N2: when the heaviest principal's records all run, the claim is refused, not a light one") {
+    val s     = store(5)
+    val l1    = record("light", T0)
+    val l2    = record("light", T0)
+    val heavy = List.fill(3)(record("heavy", T0))
+    fill(s, l1 :: l2 :: heavy, Set(l1, l2))
+    s.claim("third", None, "h", record("third", T0), T0) match
+      case ClaimResult.Rejected(err) => assertEquals((err.status, err.code), (503, "OVERLOADED"))
+      case other                     => fail(s"expected 503 OVERLOADED, got $other")
+    assert((l1 :: l2 :: heavy).forall(r => s.get(r.queryId).isDefined), "nothing was evicted")
+  }
+
+  test("N2: among equally heavy principals the oldest terminal record goes, not a name order") {
+    val s  = store(4)
+    val a1 = record("a", T0)
+    val a2 = record("a", T0)
+    val b1 = record("b", T0)
+    val b2 = record("b", T0)
+    fill(s, List(b1, a1, a2, b2), Set(b1, a2))
+    assertEquals(s.claim("c", None, "h", record("c", T0), T0), ClaimResult.Created)
+    assert(s.get(b1.queryId).isEmpty, "b1 is the oldest terminal record among the heaviest")
+    assert(List(a1, a2, b2).forall(r => s.get(r.queryId).isDefined))
   }
 
   test("a principal whose records are all still running is refused with 429") {

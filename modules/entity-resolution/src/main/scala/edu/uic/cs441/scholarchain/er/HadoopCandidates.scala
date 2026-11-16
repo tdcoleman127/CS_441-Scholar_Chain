@@ -52,6 +52,17 @@ object HadoopCandidates:
    *     [[ProxyReason]] tag, is unchanged.
    * Work-scope `sharedExactKeys` does not say which namespace matched or whether another conflicts,
    * so it is recorded as a reason code only and never takes the exact-ID path.
+   *
+   * Path parity (er-features-v3, Phase 11 repair-01 M1): `contextJaccard` is 0.0 for two empty
+   * context sets, and since er-features-v3 [[Features.coauthorOverlap]] uses the same convention,
+   * so this path and [[PairInput.fromViews]] give the same coauthorOverlap, nameSimilarity (for
+   * equal normalized names), idAgreement, yearDistance, and sameWork for the same pair. The record
+   * has no name string and no mention title, so initialsCompatibility and the mention
+   * titleSimilarity stay None here; under er-policy-v3 a missing feature never raises the score and
+   * never corroborates. Under er-policy-v4 the missing initials also block every non-ID accept
+   * (`accept-blocked:initials-unknown`, [[Resolver.acceptBlocks]]), so a mention pair from this
+   * path is accepted only on ORCID agreement. Coauthor identity (er-features-v4) keeps the DBLP
+   * homonym number, as `contextJaccard` does, so the homonym case has the same coauthorOverlap too.
    */
   def toPairInput(c: HadoopCandidate): PairInput =
     val raw            = c.features.map(f => f.name -> f.value).toMap

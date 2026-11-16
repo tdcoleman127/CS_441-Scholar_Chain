@@ -180,19 +180,25 @@ class HadoopMalformedInputSuite extends munit.FunSuite:
   test("arXiv and DBLP: an external entity (XXE) never reads a local file") {
     val dir    = Files.createTempDirectory("sc-xxe")
     val secret = dir.resolve("secret.txt")
-    Files.writeString(secret, "XXE-MARKER-7f3a")
-    val uri = secret.toUri.toString
-    val arx =
-      s"""<!DOCTYPE record [<!ENTITY xxe SYSTEM "$uri">]>""" +
-        arxivRecord.replace("<title>Graph Things</title>", "<title>&xxe;</title>")
-    val ra = SourceNormalizers.normalize(SourceType.Arxiv, arx, runId)
-    assert(!write(ra.toOption).contains("XXE-MARKER"), "arXiv leaked a local file")
-    assert(ra.isLeft, s"arXiv accepted an undeclared external entity: $ra")
-    val dblp =
-      s"""<!DOCTYPE article [<!ENTITY xxe SYSTEM "$uri">]>""" +
-        dblpRecord("journals/tst/X1", Seq("A B"), title = "&xxe;")
-    val rd = DblpRecordParser.parse(dblp, entities, runId)
-    assertEquals(rd.left.map(_.reason), Left("undeclared-entity"))
+    // CO-3 (phase 00-09 backlog): the marker file and its folder are removed after the test.
+    try
+      Files.writeString(secret, "XXE-MARKER-7f3a")
+      val uri = secret.toUri.toString
+      val arx =
+        s"""<!DOCTYPE record [<!ENTITY xxe SYSTEM "$uri">]>""" +
+          arxivRecord.replace("<title>Graph Things</title>", "<title>&xxe;</title>")
+      val ra = SourceNormalizers.normalize(SourceType.Arxiv, arx, runId)
+      assert(!write(ra.toOption).contains("XXE-MARKER"), "arXiv leaked a local file")
+      assert(ra.isLeft, s"arXiv accepted an undeclared external entity: $ra")
+      val dblp =
+        s"""<!DOCTYPE article [<!ENTITY xxe SYSTEM "$uri">]>""" +
+          dblpRecord("journals/tst/X1", Seq("A B"), title = "&xxe;")
+      val rd = DblpRecordParser.parse(dblp, entities, runId)
+      assertEquals(rd.left.map(_.reason), Left("undeclared-entity"))
+    finally
+      Files.deleteIfExists(secret)
+      Files.deleteIfExists(dir)
+      ()
   }
 
   test("RejectRecord v2: schema 2, full provenance, bounded detail, Unicode round trip") {

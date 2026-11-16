@@ -141,8 +141,9 @@ trait QueryRecordStore:
  *     `maxRecordsPerPrincipal`; at the cap, that principal's own oldest terminal record is evicted
  *     (or the claim is rejected with 429 when all of its records are still running). Beyond
  *     `maxRecords` in total, the oldest terminal record of the principal holding the most records
- *     is evicted, so one principal's traffic cannot evict a lighter principal's records.
- *     Non-terminal records are never evicted.
+ *     (running records count toward "the most") is evicted, so one principal's traffic cannot evict
+ *     a lighter principal's records. If the heaviest principals hold no terminal record, the claim
+ *     is refused with 503 OVERLOADED. Non-terminal records are never evicted.
  *   - Idempotency records: kept for `idempotencyTtlSeconds` regardless of query-record eviction.
  *     Each principal holds at most `maxIdempotencyKeysPerPrincipal` keys (its own oldest key is
  *     dropped first); beyond `maxIdempotencyKeys`, the heaviest principal's oldest key is dropped.
@@ -163,7 +164,7 @@ final class InMemoryQueryRecordStore(limits: StoreLimits, now: () => Instant)
   private def removeKey(k: Key): Unit =
     idempotency.remove(k).foreach(r => keyOf.remove(r.queryId))
 
-  /** The principal holding the most entries (ties: the first such principal in `owners`). */
+  /** The principal holding the most entries (ties: the lexicographically smallest principal). */
   private def heaviest(owners: Iterable[String]): Option[String] =
     owners.groupBy(identity).toList.sortBy((p, xs) => (-xs.size, p)).headOption.map(_._1)
 
@@ -189,12 +190,24 @@ final class InMemoryQueryRecordStore(limits: StoreLimits, now: () => Instant)
         case Some(id) => removeRecord(id); None
         case None     => Some(ApiError.RateLimited(1))
     else if records.size >= limits.maxRecords then
-      val victim = heaviest(records.values.filter(_.state.terminal).map(_.principal))
-        .flatMap(oldestTerminalOf)
-      victim match
+      globalVictim match
         case Some(id) => removeRecord(id); None
         case None     => Some(ApiError.Overloaded("query-records"))
     else None
+
+  /**
+   * Global-cap victim (N2): principals are ranked by all the records they hold, running ones
+   * included. The victim is the oldest terminal record among the principals holding the most
+   * records (ties between equally heavy principals go to the oldest such record). When those
+   * principals hold only running records, nothing is evicted and the claim is refused (503), so a
+   * lighter principal's records are never evicted to make room.
+   */
+  private def globalVictim: Option[String] =
+    val counts = records.values.groupBy(_.principal).view.mapValues(_.size).toMap
+    if counts.isEmpty then None
+    else
+      val top = counts.values.max
+      records.values.find(r => r.state.terminal && counts(r.principal) == top).map(_.queryId)
 
   private def addKey(principal: String, k: String, rec: IdempotencyRecord): Unit =
     val own = idempotency.keys.filter(_._1 == principal).toList

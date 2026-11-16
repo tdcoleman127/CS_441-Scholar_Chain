@@ -45,16 +45,22 @@ final case class FeatureVector(
   )
 
 /**
- * Feature definitions, version `er-features-v2` (v2, Phase 05 repair-01: idAgreement counts only
+ * Feature definitions, version `er-features-v4` (v2, Phase 05 repair-01: idAgreement counts only
  * the namespaces eligible for the pair's scope, see [[Identifiers.forScope]]; v1 counted every
- * authoritative namespace):
+ * authoritative namespace. v3, Phase 11 repair-01 M1: coauthorOverlap of two empty coauthor sets is
+ * 0.0, not None, so the entity-view path and the Hadoop raw-feature path (`contextJaccard`, hadoop
+ * Blocking.scala `jaccard`, which gives 0.0 for two empty sets and cannot say whether the sets were
+ * empty) compute the same value for the same pair. 0.0 means "no shared coauthor observed"; under
+ * er-policy-v3 it never corroborates and it never raises a score. v4, Phase 11 repair-02 RR4:
+ * coauthor identity keeps the DBLP homonym number, see [[Features.coauthorKey]], so `Wei Wang 0001`
+ * and `Wei Wang 0002` are different coauthors on both paths):
  *   1. nameSimilarity: Jaro-Winkler similarity (prefix scale 0.1, max prefix 4) of the canonical
  *      person names (`given... surname`, see [[Normalize.personName]]). None if either is empty.
  *   2. initialsCompatibility: 1.0 when the surnames are equal and, position by position over the
  *      shorter given-name list, each pair of given tokens has the same first letter and, when both
  *      are full names (length > 1), is equal; else 0.0. None when either side has no given name.
- *   3. coauthorOverlap: Jaccard index of the two normalized coauthor-name sets. None when both are
- *      empty.
+ *   3. coauthorOverlap: Jaccard index of the two coauthor identity sets ([[Features.coauthorKey]]:
+ *      canonical name plus DBLP homonym number, v4). 0.0 when both are empty (v3; never None).
  *   4. idAgreement: 1.0 when at least one scope-eligible authoritative namespace agrees and none
  *      conflicts, 0.0 when any conflicts, None when no eligible namespace is present on both sides.
  *   5. titleSimilarity: Jaccard index of the normalized title token sets. None when either title
@@ -63,7 +69,7 @@ final case class FeatureVector(
  */
 object Features:
 
-  val SpecVersion: String = "er-features-v2"
+  val SpecVersion: String = "er-features-v4"
 
   val NameSimilarity        = "nameSimilarity"
   val InitialsCompatibility = "initialsCompatibility"
@@ -114,10 +120,26 @@ object Features:
       }
       Some(if x.surname == y.surname && givenOk then 1.0 else 0.0)
 
+  /**
+   * Coauthor identity (er-features-v4, Phase 11 repair-02 RR4): the canonical person name
+   * ([[Normalize.personName]]) followed by the DBLP homonym number ([[Normalize.homonymNumber]]).
+   * `Wei Wang 0001` -> `wei wang 0001` and `Wei Wang 0002` -> `wei wang 0002` are different
+   * coauthors, as in the Hadoop context (`AuthorMention.normalizedName` from
+   * DblpRecordParser.normalizeName, which keeps digits, compared by Blocking.jaccard).
+   * `Wei Wang 0001` and an unnumbered `Wei Wang` also differ (Hadoop: different strings). Name
+   * order stays folded (`Hopper, Grace` = `Grace Hopper`), as in er-features-v3.
+   */
+  def coauthorKey(raw: String): String =
+    (Normalize.personName(raw).canonical +: Normalize.homonymNumber(raw)).filter(_.nonEmpty)
+      .mkString(" ")
+
+  /**
+   * Jaccard of the coauthor identity sets ([[coauthorKey]]); 0.0 for two empty sets
+   * (er-features-v3, M1), the same convention as the Hadoop raw feature `contextJaccard`.
+   */
   def coauthorOverlap(a: List[String], b: List[String]): Option[Double] =
-    def set(xs: List[String]) =
-      xs.map(n => Normalize.personName(n).canonical).filter(_.nonEmpty).toSet
-    jaccard(set(a), set(b))
+    def set(xs: List[String]) = xs.map(coauthorKey).filter(_.nonEmpty).toSet
+    jaccard(set(a), set(b)).orElse(Some(0.0))
 
   def idAgreement(c: IdComparison): Option[Double] =
     if c.hasConflict then Some(0.0) else if c.hasAgreement then Some(1.0) else None

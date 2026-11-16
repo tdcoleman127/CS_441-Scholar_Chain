@@ -46,25 +46,84 @@ enum Assertion derives ReadWriter:
 /** A drafted claim: an assertion plus the evidence IDs it cites. */
 final case class DraftClaim(assertion: Assertion, evidenceIds: List[String]) derives ReadWriter
 
-/** Synthesizer output. `schema` must equal [[RagVersions.AnswerClaimSchema]]. */
+/**
+ * Synthesizer output. `schema` must equal [[RagVersions.AnswerClaimSchema]]. Construct from model
+ * text only through [[DraftAnswer.decode]].
+ */
 final case class DraftAnswer(schema: String, claims: List[DraftClaim]) derives ReadWriter
 
 object DraftAnswer:
   val MaxClaims: Int = 25
 
   /**
-   * Strict decoder for a future model's JSON output: unreadable JSON, a wrong schema version, an
-   * unknown assertion type, or too many claims are rejected (Left). Decoding never verifies: every
-   * decoded claim still goes through [[ClaimVerifier]].
+   * Strict, total decoder for a model's JSON output: unreadable JSON, a JSON `null` anywhere (the
+   * whole answer, `claims`, a claim, an assertion, a field, or a list element), a non-finite
+   * number, a wrong schema version, an unknown assertion type, or too many claims are rejected
+   * (Left). It never throws. Decoding never verifies: every decoded claim still goes through
+   * [[ClaimVerifier]].
    */
   def decode(json: String): Either[String, DraftAnswer] =
-    Try(read[DraftAnswer](json)).toEither.left
-      .map(_ => "malformed answer JSON")
-      .flatMap { d =>
-        if d.schema != RagVersions.AnswerClaimSchema then Left(s"unexpected schema '${d.schema}'")
-        else if d.claims.size > MaxClaims then Left(s"more than $MaxClaims claims")
-        else Right(d)
-      }
+    Try {
+      Option(json)
+        .toRight("malformed answer JSON")
+        .flatMap(j => Try(read[DraftAnswer](j)).toEither.left.map(_ => "malformed answer JSON"))
+        .flatMap(validate)
+    }.toEither.left.map(_ => "malformed answer JSON").flatten
+
+  /**
+   * Deep structural check of a decoded or synthesized draft (rag-answer-claim-schema-v1): no null
+   * at any depth, finite numbers, the expected schema, and at most [[MaxClaims]] claims. Total: it
+   * returns Left for every malformed value and never throws. The pipeline applies it to every
+   * synthesizer's output, so a model client that skips [[decode]] is checked too.
+   */
+  def validate(d: DraftAnswer): Either[String, DraftAnswer] =
+    Try {
+      if d == null then Left("answer is null")
+      else if d.schema == null then Left("schema is null")
+      else if d.schema != RagVersions.AnswerClaimSchema then
+        Left(s"unexpected schema '${TextRules.clean(d.schema, 80)}'")
+      else if d.claims == null then Left("claims is null")
+      else if d.claims.size > MaxClaims then Left(s"more than $MaxClaims claims")
+      else
+        d.claims.zipWithIndex.iterator
+          .flatMap((c, i) => claimProblem(c).map(p => s"claims[$i]: $p"))
+          .nextOption()
+          .toLeft(d)
+    }.toEither.left.map(_ => "malformed answer").flatten
+
+  private def claimProblem(c: DraftClaim): Option[String] =
+    if c == null then Some("claim is null")
+    else if c.evidenceIds == null then Some("evidenceIds is null")
+    else if c.evidenceIds.contains(null) then Some("evidenceIds contains null")
+    else if c.assertion == null then Some("assertion is null")
+    else assertionProblem(c.assertion)
+
+  private def assertionProblem(a: Assertion): Option[String] =
+    def str(name: String, v: String)   = Option.when(v == null)(s"$name is null")
+    def window(w: YearWindow)          = Option.when(w == null)("window is null")
+    def metric(m: CollaborationMetric) = Option.when(m == null)("metric is null")
+    val problems: List[Option[String]] = a match
+      case Assertion.CoauthoredWith(x, y, w, _) =>
+        List(str("first", x), str("second", y), window(w))
+      case Assertion.PathExists(ns, w) =>
+        List(
+          Option.when(ns == null)("nodeIds is null"),
+          Option.when(ns != null && ns.contains(null))("nodeIds contains null"),
+          window(w)
+        )
+      case Assertion.MetricValueIs(r, m, v, w) =>
+        List(
+          str("researcherId", r),
+          metric(m),
+          Option.when(v.isNaN || v.isInfinite)("value is not finite"),
+          window(w)
+        )
+      case Assertion.MemberOfCommunity(r, c, w) =>
+        List(str("researcherId", r), str("communityId", c), window(w))
+      case Assertion.BridgeScore(r, _, _, w) => List(str("researcherId", r), window(w))
+      case Assertion.InComponent(r, c, _, w) =>
+        List(str("researcherId", r), str("componentId", c), window(w))
+    problems.flatten.headOption
 
 /** Deterministic claim text. Names are untrusted data: always quoted and bounded. */
 object ClaimText:

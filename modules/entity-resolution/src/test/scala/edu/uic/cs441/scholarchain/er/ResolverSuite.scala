@@ -37,7 +37,7 @@ class ResolverSuite extends munit.FunSuite:
 
   test("policy comes from configuration and fails closed on bad thresholds") {
     assert(IdFormat.isValid(IdKind.Run, runId))
-    assertEquals(policy.policyVersion, "er-policy-v2")
+    assertEquals(policy.policyVersion, "er-policy-v5")
     assert(policy.reject <= policy.accept)
     val swapped = ConfigFactory.parseString(
       "scholarchain.entity-resolution.policy.thresholds { accept = 0.4, reject = 0.6 }"
@@ -222,9 +222,13 @@ class ResolverSuite extends munit.FunSuite:
     val r  = Resolver.decide(policy, in, runId)
     assertNotEquals(r.path, MatchPath.Deterministic)
     assert(!r.reasonCodes.contains("name-exact+coauthor-overlap"), r.reasonCodes)
-    // Routed to the probabilistic path: (0.40*1 + 0.25*0.5 + 0.15*0.85) / 0.80 = 0.8156 < accept.
+    // Routed to the probabilistic path. er-policy-v3 bounds over all mention weights (sum 1.0):
+    // lower = 0.40*1 + 0.25*0.5 + 0.15*0.85 = 0.6525 (initials and title missing count 0);
+    // upper = 0.6525 + 0.15 + 0.05 = 0.8525 (missing count 1). Both < accept: unresolved.
     assertEquals((r.status, r.path), (ResolutionStatus.Unresolved, MatchPath.Probabilistic))
-    assertEqualsDouble(r.score.get, 0.6525 / 0.80, 1e-9)
+    assertEqualsDouble(r.score.get, 0.6525, 1e-9)
+    assertEqualsDouble(r.scoreUpper.get, 0.8525, 1e-9)
+    assertEquals(r.corroborated, Some(true))
   }
 
   test("F2 rule: deterministic mention accept needs initialsCompatibility == 1 (boundaries)") {
@@ -262,8 +266,13 @@ class ResolverSuite extends munit.FunSuite:
 
   test("adjudicator: stub abstains in the band; an invented ID is refused") {
     val band = policy.copy(accept = 0.99, reject = 0.0)
-    val in   = mention(view("m1", "A. Lee"), view("m2", "Ana Lee"))
-    val r    = Resolver.decide(band, in, runId)
+    // One shared coauthor (overlap 1/3) corroborates, so the pair reaches the adjudicator band
+    // (er-policy-v3: uncorroborated pairs never do).
+    val in = mention(
+      view("m1", "A. Lee", coauthors = List("Bo Chen", "C. Diaz")),
+      view("m2", "Ana Lee", coauthors = List("Bo Chen", "F. Gil"))
+    )
+    val r = Resolver.decide(band, in, runId)
     assertEquals(r.status, ResolutionStatus.Unresolved)
     assertEquals(r.adjudicatorVersion, Some(AbstainAdjudicator.version))
     val rogue = new Adjudicator:

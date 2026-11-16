@@ -9,7 +9,7 @@ import edu.uic.cs441.scholarchain.services.api.*
 /**
  * Presentation only: re-shapes rag's typed outcome into REST views. It computes no metric, ranks
  * nothing, and verifies nothing; every value shown comes from a graph fact, claim, or audit field
- * that rag produced.
+ * that rag produced. Researcher attributes follow the duplicate and conflict rule at [[agreed]].
  */
 object Presenter:
 
@@ -47,36 +47,79 @@ object Presenter:
       )
     )
 
+  /**
+   * Duplicate and conflict rule for researcher views (phase 11 repair-01, D2 and M2). A researcher
+   * attribute (one metric, the component, the community, the bridge measure, the display name) is
+   * presented only when every graph fact in the bundle for that researcher and attribute carries
+   * the same value. Identical duplicates collapse to that value. When the facts disagree (in any
+   * window, policy, or algorithm version, since the view carries none of those), the attribute is
+   * presented as absent (JSON null, or left out of `metrics`): the API never picks one duplicate.
+   * As a second, independent guard, an attribute is also absent when the verifier marked a claim
+   * about it CONFLICTING. The claims themselves are listed unchanged with their verification
+   * status.
+   */
+  def agreed[A](values: List[A]): Option[A] = values.distinct match
+    case List(v) => Some(v)
+    case _       => None
+
+  /** The view attribute a claim's assertion is about, for the CONFLICTING guard. */
+  private def attribute(a: Assertion): Option[(String, String)] = a match
+    case Assertion.MetricValueIs(r, m, _, _)  => Some(r -> s"metric:${m.wire}")
+    case Assertion.MemberOfCommunity(r, _, _) => Some(r -> "community")
+    case Assertion.BridgeScore(r, _, _, _)    => Some(r -> "bridge")
+    case Assertion.InComponent(r, _, _, _)    => Some(r -> "component")
+    case _                                    => None
+
   private def researchers(
       bundle: RagEvidenceBundle,
       claims: List[(AnswerClaim, Option[ClaimCheck])],
       out: OutputOptions
   ): List[ResearcherView] =
     import GraphFact.*
-    val facts = bundle.facts
-    facts.collect { case i: Identity => i }.distinctBy(_.researcherId).map { i =>
-      val id      = i.researcherId
-      val metrics = facts.collect {
-        case m: Metric if m.researcherId == id => m.metric.wire -> m.value
-      }.toMap
+    val facts      = bundle.facts
+    val conflicted = claims.collect {
+      case (_, Some(c)) if c.verdict == Verdict.Conflicting => attribute(c.claim.assertion)
+    }.flatten.toSet
+    facts.collect { case i: Identity => i.researcherId }.distinct.map { id =>
+      def shown[A](attr: String, values: List[A]): Option[A] =
+        if conflicted.contains(id -> attr) then None else agreed(values)
+      val metrics = facts
+        .collect { case m: Metric if m.researcherId == id => m }
+        .groupBy(_.metric.wire)
+        .toList
+        .flatMap((wire, ms) => shown(s"metric:$wire", ms.map(_.value)).map(wire -> _))
+        .toMap
       ResearcherView(
         id,
-        Some(i.displayName),
+        agreed(facts.collect { case i: Identity if i.researcherId == id => i.displayName }),
         None,
         metrics.get("degree"),
         metrics.get("weighted-degree"),
         None,
         None,
         Nil,
-        facts.collectFirst { case c: Component if c.researcherId == id => c.componentId },
+        shown(
+          "component",
+          facts.collect {
+            case c: Component if c.researcherId == id => (c.componentId, c.componentSize)
+          }
+        ).map(_._1),
         if !out.includeCommunities then None
-        else facts.collectFirst { case c: Community if c.researcherId == id => c.communityId },
+        else
+          shown(
+            "community",
+            facts.collect { case c: Community if c.researcherId == id => c.communityId }
+          )
+        ,
         if !out.includeBridgeMetrics then None
         else
-          facts.collectFirst {
-            case b: Bridge if b.researcherId == id =>
-              BridgeMetricView("crossCommunityDegree", b.crossCommunityDegree.toDouble)
-          }
+          shown(
+            "bridge",
+            facts.collect {
+              case b: Bridge if b.researcherId == id =>
+                (b.crossCommunityDegree, b.distinctCommunitiesTouched)
+            }
+          ).map((cross, _) => BridgeMetricView("crossCommunityDegree", cross.toDouble))
         ,
         metrics,
         claims.collect {

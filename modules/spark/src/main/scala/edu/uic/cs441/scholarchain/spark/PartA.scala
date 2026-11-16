@@ -5,6 +5,7 @@ import edu.uic.cs441.scholarchain.core.config.ConfigLoader
 import edu.uic.cs441.scholarchain.core.ids.{CanonicalHash, StableIds}
 import edu.uic.cs441.scholarchain.core.json.Wire
 import edu.uic.cs441.scholarchain.core.model.{RunInput, RunManifest, SourceType, YearWindow}
+import edu.uic.cs441.scholarchain.er.{DecisionsManifest, Outputs, ResolutionStatus}
 import org.apache.spark.sql.{functions as F, Column, DataFrame, SparkSession}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.storage.StorageLevel
@@ -42,30 +43,105 @@ final case class PartAResult(
  * Spark Part A (WO-06a): canonical researchers and authorship (job 1), the temporal weighted
  * coauthorship graph (job 2), per-researcher metrics (job 3), and connected components (job 4).
  *
- * Output layout under `<out>/run=<run-v1-hex>/`: `researchers`, `mention-researcher-map`, `works`,
- * `authored` (all years), and under `window=<start>-<end>/`: `coauthor-edges`, `excluded-pairs`,
- * `researcher-metrics`, `components` (Parquet), plus `manifest.json`, `params.json`, `counts.json`,
- * and `invariants.json`. Nothing is overwritten: an existing run directory fails the run (rerun
- * with a new `attempt`).
+ * Output layout under `<out>/run=<run-v1-hex>/`: `researchers`, `mention-researcher-map`,
+ * `identity-refused-links`, `works`, `authored` (all years), and under `window=<start>-<end>/`:
+ * `coauthor-edges`, `excluded-pairs`, `researcher-metrics`, `components` (Parquet), plus
+ * `manifest.json`, `params.json`, `counts.json`, and `invariants.json`. Nothing is overwritten: an
+ * existing run directory fails the run (rerun with a new `attempt`).
  *
  * Nothing but single-row aggregates and small grouped counts reaches the driver, and no broadcast
  * hint is applied to a graph-scale table (joins are planner-chosen).
  *
- * Identity: accepted mention-scope links are closed transitively; a closure cluster that contains
- * both members of a mention-scope conflict pair is split, so each of its mentions becomes a
- * singleton researcher with identityStatus `conflicted-split` (ER: a pair with any conflict never
- * merges).
+ * Identity (`identity-closure-v2`, Phase 11 repair-01 D1, human decision STRICT rule c): ER's
+ * accepted mention-scope links are closed transitively, but never across a merge veto. A veto is
+ * any mention-scope decision in `rejected.jsonl`, `unresolved.jsonl`, or `conflict.jsonl` (ER
+ * `Outputs.MergeVetoFiles`), or any record whose status is not `accepted`. Steps:
+ *   1. Distributed connected components of the accepted links (the unconstrained closure).
+ *   2. A closure component that contains both members of a conflict pair is split, so each of its
+ *      mentions becomes a singleton researcher with identityStatus `conflicted-split` (F2).
+ *   3. A closure component that contains both members of another veto pair is re-solved by
+ *      [[ConstrainedClosure]] (constrained union-find in a canonical link order) inside one task;
+ *      its researchers carry `vetoConstrainedClosureAnchorMentionId`.
+ *   4. Every other component keeps its closure cluster, so its researcher ID is unchanged.
+ * Every accepted link not honoured is written to `identity-refused-links` with its vetoing ER
+ * decision and provenance. Pairs that were never ER candidates have no decision and carry no veto.
+ *
+ * ER input gate (Phase 11 repair-03, review-02 F2): before any decision record is read, the ER
+ * directory must pass [[ErManifestGate.verify]] against its `_DECISIONS_MANIFEST.json` (no
+ * manifest, no run); after reading, every record must carry the manifest's single ER run ID and
+ * each file's record count must equal the manifest's ([[ErManifestGate.runProblems]]). Either
+ * failure stops the run before any output is written. The verified ER run ID, policy and features
+ * versions, per-file counts and hashes, and the manifest SHA-256 are recorded in `params.json`; the
+ * manifest SHA-256 is also a run-manifest input, so it is part of the run ID.
  */
 object PartA:
 
   val PipelineName: String = "scholarchain-spark-part-a"
 
+  /** Run-manifest input snapshot ID whose checksum is the ER manifest's SHA-256. */
+  val ErDecisionsManifestSnapshot: String = "er-decisions-manifest"
+
+  private val AcceptedFile: String = Outputs.fileFor(ResolutionStatus.Accepted)
+  private val ConflictFile: String = Outputs.fileFor(ResolutionStatus.Conflict)
+
+  /** `refusalReason` values of `identity-refused-links`. */
+  val RefusedByVeto: String  = "veto-would-join"
+  val RefusedBySplit: String = "conflicted-cluster-split"
+
   private def c(name: String): Column = F.col(name)
+
+  /** ER pair key of a mention pair, `mention|<low>|<high>` (ER `PairInput.pairId`). */
+  private def pairKey(low: Column, high: Column): Column =
+    F.concat_ws("|", F.lit("mention"), low, high)
 
   private def readJson(spark: SparkSession, schema: org.apache.spark.sql.types.StructType)(
       path: String
   ): DataFrame =
     spark.read.schema(schema).option("mode", "PERMISSIVE").json(path)
+
+  /**
+   * Reads the ER decision files `files` under `erDir` into one frame with an `erFile` column and an
+   * `erRecordProblem` column ([[ErRecordCheck]]; null for a sound record). The raw line of an
+   * unparseable record is captured in a corrupt-record column, so a broken line is classified,
+   * never turned into a silent all-null row.
+   */
+  private[spark] def readErDecisions(spark: SparkSession, erDir: String, files: List[String])
+      : DataFrame =
+    files
+      .map(f =>
+        spark.read
+          .schema(InputSchemas.resolution.add(ErRecordCheck.CorruptColumn, "string"))
+          .option("mode", "PERMISSIVE")
+          .option("columnNameOfCorruptRecord", ErRecordCheck.CorruptColumn)
+          .json(s"$erDir/$f")
+          .withColumn("erFile", F.lit(f))
+      )
+      .reduce(_.unionByName(_))
+      .withColumn("erRecordProblem", ErRecordCheck.problem)
+      .drop(ErRecordCheck.CorruptColumn)
+
+  /**
+   * Defense-in-depth check of the decision frame from [[readErDecisions]] against the verified
+   * manifest ([[ErManifestGate.runProblems]]). Only the per-file counts (at most four rows) and at
+   * most [[ErManifestGate.MaxReportedRunIds]] distinct run IDs reach the driver. Returns the
+   * problems and the number of distinct run IDs fetched.
+   */
+  private[spark] def erRunProblems(decisions: DataFrame, m: DecisionsManifest)
+      : (List[String], Long) =
+    val perFile = decisions
+      .groupBy("erFile")
+      .count()
+      .collect() // at most four rows
+      .map(r => r.getString(0) -> r.getLong(1))
+      .toMap
+    val runIds = decisions
+      .select(c("provenance.pipelineRunId"))
+      .distinct()
+      .limit(ErManifestGate.MaxReportedRunIds)
+      .collect()
+      .map(r => Option(r.getString(0)).getOrElse("<null>"))
+      .toList
+    (ErManifestGate.runProblems(m, perFile, runIds), runIds.size.toLong)
 
   /** Config fingerprint of this run: the core config fingerprint plus the Spark parameters. */
   def configFingerprint(coreFingerprint: String, p: PartAParams): String =
@@ -96,7 +172,8 @@ object PartA:
         "authorPosition",
         "normalizedName",
         "year",
-        "provenance"
+        "provenance",
+        "vetoConstrainedClosureAnchorMentionId"
       )
       .join(
         clusters.select(
@@ -135,19 +212,36 @@ object PartA:
       outRoot: String,
       stageMetrics: StageMetrics
   ): PartAResult =
-    val accepted = s"${in.erDir}/accepted.jsonl"
-    val conflict = s"${in.erDir}/conflict.jsonl"
+    // ER decision files: accepted.jsonl plus the three merge-veto files. ER always writes all four
+    // (possibly empty) and, last, its completion manifest.
+    val erFiles           = AcceptedFile :: Outputs.MergeVetoFiles
+    def erPath(f: String) = s"${in.erDir}/$f"
+
+    // ---- ER manifest gate, step 1 (Phase 11 repair-03 F2): verify before reading any record ----
+    // A missing, stale, partial, or mixed ER directory fails here, before the run ID is derived
+    // and before any output exists (ErManifestGate.verify).
+    val erVerified = ErManifestGate.verify(spark, in.erDir) match
+      case Right(v)       => v
+      case Left(problems) =>
+        throw new IllegalStateException(ErManifestGate.verifyFailureMessage(in.erDir, problems))
+    val erManifest = erVerified.manifest
 
     // ---- Run manifest first: the run ID stamps every output record -----------------------------
-    val inputs = List(
-      "hadoop-authorpapers" -> in.authorPapers,
-      "hadoop-pairs"        -> in.pairs,
-      "hadoop-works"        -> in.works,
-      "er-accepted"         -> accepted,
-      "er-conflict"         -> conflict
-    ).map((snap, path) =>
-      RunInput(SourceType.ScholarChainPipeline, snap, JobFiles.listingFingerprint(spark, path))
-    )
+    // The ER manifest's SHA-256 is a run input (snapshot `er-decisions-manifest`), so the run ID is
+    // content-addressed on the ER decisions: it covers every decision file's SHA-256 and the ER
+    // run ID, which the listing fingerprints (path and byte length only) do not.
+    val inputs =
+      (List(
+        "hadoop-authorpapers" -> in.authorPapers,
+        "hadoop-pairs"        -> in.pairs,
+        "hadoop-works"        -> in.works
+      ) ++ erFiles.map(f => s"er-${f.stripSuffix(".jsonl")}" -> erPath(f))).map((snap, path) =>
+        RunInput(SourceType.ScholarChainPipeline, snap, JobFiles.listingFingerprint(spark, path))
+      ) :+ RunInput(
+        SourceType.ScholarChainPipeline,
+        ErDecisionsManifestSnapshot,
+        "sha256:" + erVerified.manifestSha256
+      )
     val fingerprint = configFingerprint(coreFingerprint, p)
     val runId       = StableIds.runId(PipelineName, codeVersion, fingerprint, inputs, attempt)
     val manifest    = RunManifest(
@@ -183,9 +277,39 @@ object PartA:
     counts += "inputAuthorPaperDuplicateMention" -> (apOkRows - mCount)
     counts += "mentions"                         -> mCount
 
-    val res = readJson(spark, InputSchemas.resolution)
-    val acc = res(accepted)
-    val con = res(conflict)
+    // ER decision records fail closed (Phase 11 repair-02 RR1, ErRecordCheck): an unparseable line
+    // or an incomplete record in any of the four files fails the run here, before any output is
+    // written. A broken veto line is never read as "no veto", and a broken accepted line never
+    // disappears unnoticed. Since repair-03 a corrupt line already fails ErManifestGate.verify
+    // (sha256, count, parse); this rule still catches records the verifier admits but Spark cannot
+    // use (for example a blank member, a blank decisionId, or a scope other than mention or work).
+    val decisions  = readErDecisions(spark, in.erDir, erFiles).persist(StorageLevel.MEMORY_AND_DISK)
+    val erProblems = decisions
+      .where(c("erRecordProblem").isNotNull)
+      .groupBy("erFile", "erRecordProblem")
+      .count()
+      .collect() // at most eight rows (four files, two problems)
+      .map(r => (r.getString(0), r.getString(1)) -> r.getLong(2))
+      .toMap
+    for f <- erFiles; pr <- ErRecordCheck.Problems do
+      counts += ErRecordCheck.countKey(pr, f) -> erProblems.getOrElse((f, pr), 0L)
+    if erProblems.nonEmpty then
+      decisions.unpersist()
+      mentions.unpersist()
+      throw new IllegalStateException(ErRecordCheck.failureMessage(in.erDir, erProblems))
+    // ER manifest gate, step 2 (defense in depth): what Spark read is exactly one ER run, the
+    // verified one, with the manifest's record count per file.
+    val (runProblems, erRunIdsDistinct) = erRunProblems(decisions, erManifest)
+    counts += "erDecisionDistinctRunIds" -> erRunIdsDistinct
+    if runProblems.nonEmpty then
+      decisions.unpersist()
+      mentions.unpersist()
+      throw new IllegalStateException(ErManifestGate.runFailureMessage(in.erDir, runProblems))
+    val acc = decisions.where(c("erFile") === AcceptedFile)
+    val con = decisions.where(c("erFile") === ConflictFile)
+    Outputs.MergeVetoFiles.foreach(f =>
+      counts += s"erVetoRecords:$f" -> decisions.where(c("erFile") === f).count()
+    )
     counts += "erAcceptedRecords"             -> acc.count()
     counts += "erAcceptedWorkLinksNotApplied" -> acc.where(c("scope") === "work").count()
     val vIds  = mentions.select(c("mentionId").as("id"))
@@ -201,46 +325,212 @@ object PartA:
     counts += "erAcceptedMentionLinksApplied"  -> linkOkN
     counts += "erAcceptedMentionLinksDangling" -> (linkN - linkOkN)
 
+    // Distinct applied link pairs in canonical order (low < high; self links dropped), one
+    // representative ER record per pair: highest confidence, then smallest decisionId.
+    val conf     = F.when(F.isnan(c("confidence")), F.lit(0.0)).otherwise(c("confidence"))
+    val swapped  = c("memberLow") > c("memberHigh")
+    val linkRecs = acc
+      .where(c("scope") === "mention" && c("status") === "accepted")
+      .where(c("memberLow").isNotNull && c("memberHigh").isNotNull)
+      .withColumn("low", F.least(c("memberLow"), c("memberHigh")))
+      .withColumn("high", F.greatest(c("memberLow"), c("memberHigh")))
+      .where(c("low") =!= c("high"))
+      .join(vIds.withColumnRenamed("id", "low"), Seq("low"), "left_semi")
+      .join(vIds.withColumnRenamed("id", "high"), Seq("high"), "left_semi")
+      .withColumn("linkKey", pairKey(c("low"), c("high")))
+      .withColumn("linkConfidence", F.coalesce(conf, F.lit(0.0)))
+      .withColumn("pLow", F.when(swapped, c("provenanceHigh")).otherwise(c("provenanceLow")))
+      .withColumn("pHigh", F.when(swapped, c("provenanceLow")).otherwise(c("provenanceHigh")))
+      .withColumn(
+        "rk",
+        F.row_number().over(
+          Window
+            .partitionBy("linkKey")
+            .orderBy(c("linkConfidence").desc, c("decisionId").asc_nulls_last)
+        )
+      )
+      .where(c("rk") === 1)
+      .drop("rk")
+      .transform(Checkpointing.cut)
+    val linkPairN = linkRecs.count()
+    counts += "erAcceptedMentionLinkPairs" -> linkPairN
+
+    // Merge vetoes (human decision STRICT, rule c): every mention-scope record of a veto file, and
+    // any mention-scope record whose status is not `accepted` (ResolutionRecord.blocksMerge). One
+    // representative per pair: a conflict record if any, then smallest decisionId. A pair that was
+    // never an ER candidate has no record, so it carries no veto.
+    val isVeto = c("erFile") =!= AcceptedFile || c("status").isNull || c("status") =!= "accepted"
+    val vetoes = decisions
+      .where(c("scope") === "mention" && isVeto)
+      .where(c("memberLow").isNotNull && c("memberHigh").isNotNull)
+      .withColumn("a", F.least(c("memberLow"), c("memberHigh")))
+      .withColumn("b", F.greatest(c("memberLow"), c("memberHigh")))
+      .where(c("a") =!= c("b"))
+      .withColumn("vetoKey", pairKey(c("a"), c("b")))
+      .withColumn(
+        "isConflict",
+        F.coalesce(c("erFile") === ConflictFile || c("status") === "conflict", F.lit(false))
+      )
+      .withColumn(
+        "rk",
+        F.row_number().over(
+          Window
+            .partitionBy("vetoKey")
+            .orderBy(c("isConflict").desc, c("decisionId").asc_nulls_last, c("erFile").asc)
+        )
+      )
+      .where(c("rk") === 1)
+      .drop("rk")
+      .transform(Checkpointing.cut)
+    counts += "erVetoMentionPairs" -> vetoes.count()
+
+    // Unconstrained closure (distributed): connected components of the accepted links. A veto can
+    // only matter inside one closure component, because accepted links never cross components.
     val idCc    = ConnectedComponents.run(vIds, linkOk, p.ccMaxIterations)
+    val lab     = idCc.labels.select(c("id"), c("component"))
     val closure = mentions
-      .join(idCc.labels.withColumnRenamed("id", "mentionId"), Seq("mentionId"))
+      .join(lab.withColumnRenamed("id", "mentionId"), Seq("mentionId"))
       .withColumnRenamed("component", "closureAnchorMentionId")
-    // Conflict policy (WO-06a repair-01 F2): ER's rule is "a pair with any conflict never merges".
-    // A transitive-closure cluster that contains both members of a mention-scope conflict pair is
-    // therefore not merged at all: every member mention becomes its own singleton researcher (anchor
-    // = the mention itself, the same researcher-ID rule as any singleton), with identityStatus
-    // `conflicted-split` and the pre-split closure anchor kept in `conflictedClusterAnchorMentionId`
-    // so the conflict stays visible.
-    val conflictedClusters = con
-      .where(c("scope") === "mention")
-      .join(
-        closure.select(c("mentionId").as("memberLow"), c("closureAnchorMentionId").as("aL")),
-        Seq("memberLow")
-      )
-      .join(
-        closure.select(c("mentionId").as("memberHigh"), c("closureAnchorMentionId").as("aH")),
-        Seq("memberHigh")
-      )
-      .where(c("aL") === c("aH"))
-      .select(c("aL").as("closureAnchorMentionId"))
-      .distinct()
+    val activeVetoes = vetoes
+      .join(lab.select(c("id").as("a"), c("component").as("cA")), Seq("a"))
+      .join(lab.select(c("id").as("b"), c("component").as("cB")), Seq("b"))
+      .where(c("cA") === c("cB"))
+      .select(c("cA").as("component"), c("a"), c("b"), c("vetoKey"), c("isConflict"))
+      .transform(Checkpointing.cut)
+    counts += "erVetoMentionPairsWithinClosure" -> activeVetoes.count()
+
+    // Conflict policy (WO-06a repair-01 F2, kept): ER's rule is "a pair with any conflict never
+    // merges". A closure component that contains both members of a mention-scope conflict pair is
+    // not merged at all: every member mention becomes its own singleton researcher (anchor = the
+    // mention itself), with identityStatus `conflicted-split` and the pre-split closure anchor kept
+    // in `conflictedClusterAnchorMentionId`. This is stricter than the constrained closure below, so
+    // a conflict veto is honoured either way; every accepted link of such a component is recorded as
+    // refused (`conflicted-cluster-split`, vetoing decision = the smallest conflict pair key).
+    val conflictedClusters = activeVetoes
+      .where(c("isConflict"))
+      .groupBy(c("component").as("closureAnchorMentionId"))
+      .agg(F.min("vetoKey").as("splitVetoKey"))
       .withColumn("conflictedCluster", F.lit(true))
+      .transform(Checkpointing.cut)
+
+    // Veto-constrained closure (D1, ConstrainedClosure): only the closure components that hold a
+    // non-conflict veto between two of their own mentions are gathered, one group per component,
+    // and solved inside one task each (constrained union-find is sequential). Every other component
+    // keeps its distributed closure label unchanged.
+    val constrainedComps = activeVetoes
+      .select("component")
+      .distinct()
+      .join(
+        conflictedClusters.select(c("closureAnchorMentionId").as("component")),
+        Seq("component"),
+        "left_anti"
+      )
+    val linkComp = linkRecs
+      .join(lab.select(c("id").as("low"), c("component")), Seq("low"))
+    val compLinks = linkComp
+      .join(constrainedComps, Seq("component"), "left_semi")
+      .groupBy("component")
+      .agg(
+        F.collect_list(
+          F.struct(
+            c("low"),
+            c("high"),
+            c("linkConfidence").as("confidence"),
+            c("linkKey").as("key")
+          )
+        ).as("links"),
+        F.count(F.lit(1)).as("componentLinks")
+      )
+    val compVetoes = activeVetoes
+      .join(constrainedComps, Seq("component"), "left_semi")
+      .groupBy("component")
+      .agg(F.collect_list(F.struct(c("a"), c("b"), c("vetoKey").as("key"))).as("vetoes"))
+    val solved = compLinks
+      .join(compVetoes, Seq("component"))
+      .select(
+        c("component"),
+        c("componentLinks"),
+        ConstrainedClosure.solveUdf(c("links"), c("vetoes")).as("r")
+      )
+      .transform(Checkpointing.cut)
+    val constrainedAssign = solved
+      .select(c("component"), F.explode(c("r.assign")).as("x"))
+      .select(
+        c("x.mentionId").as("mentionId"),
+        c("x.anchorMentionId").as("constrainedAnchorMentionId"),
+        c("component").as("vetoConstrainedClosureAnchorMentionId")
+      )
+    val refused = solved
+      .select(c("component"), F.explode(c("r.refused")).as("x"))
+      .select(
+        c("x.linkKey").as("linkKey"),
+        c("x.vetoKey").as("vetoKey"),
+        c("component").as("closureAnchorMentionId"),
+        F.lit(RefusedByVeto).as("refusalReason")
+      )
+      .unionByName(
+        linkComp
+          .join(
+            conflictedClusters.select(
+              c("closureAnchorMentionId").as("component"),
+              c("splitVetoKey")
+            ),
+            Seq("component")
+          )
+          .select(
+            c("linkKey"),
+            c("splitVetoKey").as("vetoKey"),
+            c("component").as("closureAnchorMentionId"),
+            F.lit(RefusedBySplit).as("refusalReason")
+          )
+      )
+      .transform(Checkpointing.cut)
+
     val clustered = closure
-      .join(conflictedClusters, Seq("closureAnchorMentionId"), "left")
+      .join(
+        conflictedClusters.select("closureAnchorMentionId", "conflictedCluster"),
+        Seq("closureAnchorMentionId"),
+        "left"
+      )
+      .join(constrainedAssign, Seq("mentionId"), "left")
       .withColumn("split", c("conflictedCluster").isNotNull)
       .withColumn(
         "anchorMentionId",
-        F.when(c("split"), c("mentionId")).otherwise(c("closureAnchorMentionId"))
+        F.when(c("split"), c("mentionId"))
+          .when(c("constrainedAnchorMentionId").isNotNull, c("constrainedAnchorMentionId"))
+          .otherwise(c("closureAnchorMentionId"))
       )
       .withColumn(
         "conflictedClusterAnchorMentionId",
         F.when(c("split"), c("closureAnchorMentionId"))
       )
-      .drop("conflictedCluster", "closureAnchorMentionId")
-      .persist(StorageLevel.MEMORY_AND_DISK)
+      .drop("conflictedCluster", "closureAnchorMentionId", "constrainedAnchorMentionId")
+      .transform(Checkpointing.cut)
     counts += "conflictedClusters"             -> conflictedClusters.count()
     counts += "conflictedClusterMentionsSplit" -> clustered.where(c("split")).count()
-    val anchors = mentions.select(
+    val solvedStats = solved
+      .agg(
+        F.count(F.lit(1)),
+        F.coalesce(F.max(F.size(c("r.assign"))).cast("long"), F.lit(0L)),
+        F.coalesce(F.max(c("componentLinks")), F.lit(0L))
+      )
+      .first()
+    counts += "identityConstrainedComponents"   -> solvedStats.getLong(0)
+    counts += "maxConstrainedComponentMentions" -> solvedStats.getLong(1)
+    counts += "maxConstrainedComponentLinks"    -> solvedStats.getLong(2)
+    counts += "identityConstrainedMentions"     ->
+      clustered.where(c("vetoConstrainedClosureAnchorMentionId").isNotNull).count()
+    val refusedByReason = refused
+      .groupBy("refusalReason")
+      .count()
+      .collect() // at most two rows
+      .map(r => r.getString(0) -> r.getLong(1))
+      .toMap
+    List(RefusedByVeto, RefusedBySplit).foreach(r =>
+      counts += s"identityLinksRefused:$r" -> refusedByReason.getOrElse(r, 0L)
+    )
+    val refusedN = refusedByReason.values.sum
+    val anchors  = mentions.select(
       c("mentionId").as("anchorMentionId"),
       c("provenance.sourceDataset").as("anchorDataset"),
       c("provenance.sourceRecordId").as("anchorRecordId"),
@@ -251,7 +541,9 @@ object PartA:
       .agg(
         F.count(F.lit(1)).as("clusterSize"),
         F.max(c("split")).as("split"),
-        F.max(c("conflictedClusterAnchorMentionId")).as("conflictedClusterAnchorMentionId")
+        F.max(c("conflictedClusterAnchorMentionId")).as("conflictedClusterAnchorMentionId"),
+        F.max(c("vetoConstrainedClosureAnchorMentionId"))
+          .as("vetoConstrainedClosureAnchorMentionId")
       )
     val clusters = anchors
       .join(sizes, Seq("anchorMentionId"))
@@ -272,6 +564,7 @@ object PartA:
         c("identityStatus"),
         c("clusterSize"),
         c("conflictedClusterAnchorMentionId"),
+        c("vetoConstrainedClosureAnchorMentionId"),
         c("provenance.sourceDataset").as("sourceDataset"),
         c("provenance.sourceRecordId").as("sourceRecordId"),
         c("provenance.pipelineRunId").as("sourcePipelineRunId"),
@@ -279,6 +572,75 @@ object PartA:
       )
       .write
       .parquet(s"$base/mention-researcher-map")
+
+    // Refused accepted links (D1 evidence): the link, the vetoing ER decision, and both sources.
+    val linkDetail = linkRecs.select(
+      c("linkKey"),
+      c("low").as("memberLow"),
+      c("high").as("memberHigh"),
+      c("decisionId").as("linkDecisionId"),
+      c("linkConfidence"),
+      c("policyVersion").as("linkPolicyVersion"),
+      c("provenance.sourceDataset").as("sourceDataset"),
+      c("provenance.sourceRecordId").as("sourceRecordId"),
+      c("provenance.pipelineRunId").as("sourcePipelineRunId"),
+      c("pLow.sourceDataset").as("memberLowSourceDataset"),
+      c("pLow.sourceRecordId").as("memberLowSourceRecordId"),
+      c("pLow.pipelineRunId").as("memberLowSourcePipelineRunId"),
+      c("pHigh.sourceDataset").as("memberHighSourceDataset"),
+      c("pHigh.sourceRecordId").as("memberHighSourceRecordId"),
+      c("pHigh.pipelineRunId").as("memberHighSourcePipelineRunId")
+    )
+    val vetoDetail = vetoes.select(
+      c("vetoKey"),
+      c("a").as("vetoMemberLow"),
+      c("b").as("vetoMemberHigh"),
+      c("decisionId").as("vetoDecisionId"),
+      c("status").as("vetoStatus"),
+      c("erFile").as("vetoErFile"),
+      c("reasonCodes").as("vetoReasonCodes"),
+      c("policyVersion").as("vetoPolicyVersion"),
+      c("provenance.sourceDataset").as("vetoSourceDataset"),
+      c("provenance.sourceRecordId").as("vetoSourceRecordId"),
+      c("provenance.pipelineRunId").as("vetoSourcePipelineRunId")
+    )
+    val refusedOut = refused
+      .join(linkDetail, Seq("linkKey"), "left")
+      .join(vetoDetail, Seq("vetoKey"), "left")
+      .select(
+        c("linkKey").as("pairId"),
+        c("memberLow"),
+        c("memberHigh"),
+        c("linkDecisionId"),
+        c("linkConfidence"),
+        c("linkPolicyVersion"),
+        c("refusalReason"),
+        c("closureAnchorMentionId"),
+        c("vetoKey").as("vetoPairId"),
+        c("vetoMemberLow"),
+        c("vetoMemberHigh"),
+        c("vetoDecisionId"),
+        c("vetoStatus"),
+        c("vetoErFile"),
+        c("vetoReasonCodes"),
+        c("vetoPolicyVersion"),
+        c("vetoSourceDataset"),
+        c("vetoSourceRecordId"),
+        c("vetoSourcePipelineRunId"),
+        c("sourceDataset"),
+        c("sourceRecordId"),
+        c("sourcePipelineRunId"),
+        c("memberLowSourceDataset"),
+        c("memberLowSourceRecordId"),
+        c("memberLowSourcePipelineRunId"),
+        c("memberHighSourceDataset"),
+        c("memberHighSourceRecordId"),
+        c("memberHighSourcePipelineRunId"),
+        F.lit(ConstrainedClosure.Version).as("identityClosureVersion"),
+        runIdC.as("pipelineRunId")
+      )
+      .transform(Checkpointing.cut)
+    refusedOut.write.parquet(s"$base/identity-refused-links")
 
     val byName = mentionMap
       .groupBy("researcherId", "normalizedName")
@@ -304,6 +666,7 @@ object PartA:
           c("identityStatus"),
           c("anchorMentionId"),
           c("conflictedClusterAnchorMentionId"),
+          c("vetoConstrainedClosureAnchorMentionId"),
           c("anchorDataset").as("sourceDataset"),
           c("anchorRecordId").as("sourceRecordId"),
           c("anchorRunId").as("sourcePipelineRunId")
@@ -317,6 +680,8 @@ object PartA:
     counts += "researchersMerged" -> researchers.where(c("identityStatus") === "merged").count()
     counts += "researchersConflictedSplit" ->
       researchers.where(c("identityStatus") === "conflicted-split").count()
+    counts += "researchersVetoConstrained" ->
+      researchers.where(c("vetoConstrainedClosureAnchorMentionId").isNotNull).count()
     counts += "identityCcIterations"   -> idCc.iterations.toLong
     counts += "maxIdentityClusterSize" ->
       researchers.agg(F.coalesce(F.max("mentionCount"), F.lit(0L))).first().getLong(0)
@@ -342,6 +707,54 @@ object PartA:
           Seq("memberHigh")
         )
         .where(c("rL") === c("rH"))
+        .count()
+    // STRICT rule c, checked on the output: no veto pair (rejected, unresolved, conflict) shares a
+    // researcher.
+    invariants += "veto-pair-same-researcher" ->
+      vetoes
+        .join(mmR.select(c("mentionId").as("a"), c("researcherId").as("rA")), Seq("a"))
+        .join(mmR.select(c("mentionId").as("b"), c("researcherId").as("rB")), Seq("b"))
+        .where(c("rA") === c("rB"))
+        .count()
+    // A refused link's two mentions never share a researcher, and every refused row resolves to
+    // its link and its vetoing decision.
+    invariants += "refused-link-same-researcher" ->
+      refusedOut
+        .join(
+          mmR.select(c("mentionId").as("memberLow"), c("researcherId").as("rL")),
+          Seq("memberLow")
+        )
+        .join(
+          mmR.select(c("mentionId").as("memberHigh"), c("researcherId").as("rH")),
+          Seq("memberHigh")
+        )
+        .where(c("rL") === c("rH"))
+        .count()
+    invariants += "refused-link-missing-evidence" ->
+      refusedOut
+        .where(
+          c("memberLow").isNull || c("vetoDecisionId").isNull || c("vetoSourceDataset").isNull ||
+            c("vetoSourceRecordId").isNull || c("vetoSourcePipelineRunId").isNull
+        )
+        .count()
+    invariants += "refused-link-duplicate" ->
+      (refusedN - refusedOut.select("pairId").distinct().count())
+    // Every distinct applied link is either refused or has both mentions in one researcher.
+    val linkJoined = linkRecs
+      .join(mmR.select(c("mentionId").as("low"), c("researcherId").as("rL")), Seq("low"))
+      .join(mmR.select(c("mentionId").as("high"), c("researcherId").as("rH")), Seq("high"))
+      .where(c("rL") === c("rH"))
+      .count()
+    invariants += "accepted-link-accounting" -> math.abs(linkPairN - refusedN - linkJoined)
+    // Every mention of a constrained component received a constrained anchor.
+    invariants += "constrained-mention-unassigned" ->
+      closure
+        .join(
+          constrainedComps.select(c("component").as("closureAnchorMentionId")),
+          Seq("closureAnchorMentionId"),
+          "left_semi"
+        )
+        .join(constrainedAssign, Seq("mentionId"), "left_anti")
         .count()
 
     val worksRaw = readJson(spark, InputSchemas.work)(in.works)
@@ -724,9 +1137,36 @@ object PartA:
           "shufflePartitions"         -> p.shufflePartitions,
           "coreConfigFingerprint"     -> coreFingerprint,
           "researcherIdentityVersion" -> IdUdfs.IdentityVersion,
-          "researcherAnchorRule"      -> "smallest mention ID in the accepted-link cluster",
-          "conflictPolicy"            ->
+          "researcherAnchorRule"      ->
+            "smallest mention ID in the veto-constrained accepted-link cluster",
+          "conflictPolicy" ->
             "a cluster joining a conflict pair is split: each member mention is its own singleton researcher (conflicted-split)",
+          "identityClosure"  -> ConstrainedClosure.Version,
+          "identityVetoRule" ->
+            "STRICT rule c: a mention pair with any non-accepted ER decision (rejected, unresolved, conflict) is never joined; pairs with no ER decision carry no veto",
+          "identityVetoFiles"    -> ujson.Arr.from(Outputs.MergeVetoFiles),
+          "erDecisionRecordRule" -> ErRecordCheck.Rule,
+          "erManifestRule"       -> ErManifestGate.Rule,
+          "erDecisions"          -> ujson.Obj(
+            "manifestFile"          -> Outputs.ManifestFileName,
+            "manifestSha256"        -> ("sha256:" + erVerified.manifestSha256),
+            "manifestSchemaVersion" -> erManifest.manifestSchemaVersion,
+            "pipelineRunId"         -> erManifest.pipelineRunId,
+            "policyVersion"         -> erManifest.policyVersion,
+            "featuresVersion"       -> erManifest.featuresVersion,
+            "schemaVersion"         -> erManifest.schemaVersion,
+            "files"                 -> ujson.Arr.from(erManifest.files.map(e =>
+              ujson.Obj(
+                "name"        -> e.name,
+                "recordCount" -> ujson.Num(e.recordCount.toDouble),
+                "sha256"      -> e.sha256
+              )
+            )),
+            "runIdInput" ->
+              s"the manifest SHA-256 is run input '$ErDecisionsManifestSnapshot', so the run ID changes whenever any ER decision file or the ER run changes"
+          ),
+          "identityLinkOrder" ->
+            "ER confidence descending (NaN or null = 0.0), then link key mention|low|high ascending",
           "inputs" -> ujson.Obj(
             "authorPapers" -> in.authorPapers,
             "pairs"        -> in.pairs,
@@ -745,6 +1185,14 @@ object PartA:
     )
     List(
       mentions,
+      decisions,
+      linkRecs,
+      vetoes,
+      activeVetoes,
+      conflictedClusters,
+      solved,
+      refused,
+      refusedOut,
       clustered,
       mentionMap,
       researchers,

@@ -130,15 +130,29 @@ object Evaluator:
   ): GoldWorksheet.Loaded =
     GoldWorksheet.load(path, policy, defaultLabeler)
 
-  /** Status under alternative thresholds: only probabilistic-path pairs with a score move. */
+  /**
+   * Status under alternative thresholds: only probabilistic-path pairs with a score move, by the
+   * er-policy-v3 band on the score bounds (an uncorroborated pair never moves to accepted). Items
+   * without `scoreUpper` (written before v3) use `score` as both bounds.
+   *
+   * er-policy-v4 (Phase 11 repair-02): a missing value never moves an item to accepted. An item
+   * without `corroborated` (written before v3) counts as corroborated only if it was already
+   * accepted (v2 used `true` for every such item, so a lower threshold could accept an unresolved
+   * pair whose corroboration was never computed). An item with an `accept-blocked:` reason code
+   * ([[Resolver.acceptBlocks]]) never moves to accepted; it can still move to rejected.
+   */
   def restatus(item: ReviewItem, accept: Double, reject: Double): ResolutionStatus =
     val probabilistic = item.path == MatchPath.Probabilistic ||
       item.path == MatchPath.LlmAdjudicated
     val scoreDecided = item.reasonCodes.exists(_.startsWith("score-band:")) ||
       item.reasonCodes.exists(_.startsWith("adjudicator-"))
+    val blocked      = item.reasonCodes.exists(_.startsWith(Resolver.AcceptBlocked))
+    val corroborated =
+      item.corroborated.getOrElse(item.status == ResolutionStatus.Accepted) && !blocked
     (probabilistic && scoreDecided, item.score) match
-      case (true, Some(s)) => Resolver.band(s, accept, reject)
-      case _               => item.status
+      case (true, Some(s)) =>
+        Resolver.band(s, item.scoreUpper.getOrElse(s), corroborated, accept, reject)
+      case _ => item.status
 
   def evaluate(policy: ScoringPolicy, load: LoadResult): Evaluation =
     val cells  = load.labeled.map(lp => lp.item.path -> Confusion.of(lp.item.status, lp.isMatch))
@@ -206,6 +220,8 @@ object EvaluatorMain:
 
 /**
  * `ResolveMain <candidates.jsonl> <outDir> <runId> [reviewLimit]`: decides Hadoop Job 5 candidates.
+ * `outDir` is a local path; it is published atomically with `_DECISIONS_MANIFEST.json`
+ * ([[Outputs.writeRun]]) and must be new, empty, or a previous ER output directory.
  */
 object ResolveMain:
   def main(args: Array[String]): Unit =
@@ -221,7 +237,9 @@ object ResolveMain:
     val recs   = parsed.collect { case Right(c) =>
       Resolver.decide(policy, HadoopCandidates.toPairInput(c), args(2))
     }
-    val counts = Outputs.writeAll(Path.of(args(1)), recs, limit)
+    // Atomic publish plus completion manifest (Phase 11 repair-03, F2); an empty run still gets
+    // a manifest, so the run ID comes from the arguments, not from the records.
+    val counts = Outputs.writeRun(Path.of(args(1)), recs, limit, args(2), policy.policyVersion)
     println(s"policy=${policy.policyVersion} candidates=${lines.size} malformed=${bad.size} " +
       counts.toList.sorted.map((k, v) => s"$k=$v").mkString(" "))
     bad.take(10).foreach(e => System.err.println(e))

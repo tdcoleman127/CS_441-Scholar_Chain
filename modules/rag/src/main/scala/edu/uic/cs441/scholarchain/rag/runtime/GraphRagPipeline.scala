@@ -7,7 +7,9 @@ import edu.uic.cs441.scholarchain.core.model.*
 import edu.uic.cs441.scholarchain.core.validation.Validation
 import edu.uic.cs441.scholarchain.core.validation.Validators.given
 import edu.uic.cs441.scholarchain.storage.kv.EvidenceBundleTable
+import edu.uic.cs441.scholarchain.rag.semantic.SemanticContext
 import upickle.default.ReadWriter
+import scala.util.{Success, Try}
 
 /** Why the runtime did not answer. Abstaining is a correct outcome (never a guess). */
 enum Abstention(val wire: String):
@@ -81,7 +83,15 @@ final class GraphRagPipeline(
   import PlanOperation.*
 
   private val resolver = ResearcherResolver(facts.researchers)
-  private val versions = RagVersions.all(synthesizer.version, embeddingModel)
+  // RR6: the synthesizer's version is read from a pluggable component, so null or a throw is
+  // recorded as unknown instead of failing construction or putting null in the audit.
+  private val versions = RagVersions.all(
+    Try(synthesizer.version).toOption.flatMap(Option(_)).getOrElse("unknown-synthesizer"),
+    embeddingModel
+  )
+
+  /** The pluggable clock, total: a throw gives 0 (latency is then clamped at 0). */
+  private def now(): Long = Try(clockMillis()).getOrElse(0L)
 
   private def emptyAudit = AuditRecord(
     RagVersions.AuditRecordSchema,
@@ -128,8 +138,8 @@ final class GraphRagPipeline(
     )
 
   def answer(question: String): RagOutcome =
-    val start                = clockMillis()
-    def done(a: AuditRecord) = a.copy(latencyMillis = (clockMillis() - start).max(0L))
+    val start                = now()
+    def done(a: AuditRecord) = a.copy(latencyMillis = (now() - start).max(0L))
     val base                 = emptyAudit
     planner.plan(question) match
       case PlannerResult.Refused(r) =>
@@ -194,15 +204,28 @@ final class GraphRagPipeline(
   ): RagOutcome =
     val plan  = corePlan(parsed, op)
     val audit = audit0.copy(plan = Some(plan))
-    retrieve(op, parsed.window) match
+    // RR6: graph retrieval (pluggable graph store) and bundle building are guarded: a throw, a null
+    // result, or a result holding nulls abstains as a retrieval failure.
+    val retrieved =
+      Total.call("graph retrieval failed")(retrieve(op, parsed.window)).flatMap(got =>
+        Either.cond(Total.wellFormed(got), got, "graph retrieval returned a malformed result")
+      )
+    retrieved.flatMap { got =>
+      val ctx = Total.semantic(semantic, parsed.question)
+      Total.call("evidence bundle could not be built")(
+        Right(EvidenceBuilder.build(got.facts, ctx, facts.releaseRunId))
+      ).map(got -> _)
+    } match
       case Left(err) =>
         val abs = Abstention.RetrievalFailed(err)
         RagOutcome.Abstained(abs, done(audit.copy(outcome = "abstained", reason = Some(abs.wire))))
-      case Right(got) =>
-        val ctx    = semantic.fold(SemanticStage.empty)(_.search(parsed.question))
-        val bundle = EvidenceBuilder.build(got.facts, ctx, plan.planId, facts.releaseRunId)
-        val stored =
-          bundleTable.map(_.put(bundle.core).fold(e => s"failed: ${e.message}", _.toString))
+      case Right((got, bundle)) =>
+        val stored = bundleTable.map(t =>
+          Try(t.put(bundle.core).fold(e => s"failed: ${e.message}", _.toString))
+            .toOption
+            .flatMap(Option(_))
+            .getOrElse("failed: bundle store error")
+        )
         val withBundle = audit.copy(
           graphEvidenceIds = bundle.graph.map(_.evidenceId),
           semanticEvidenceIds = bundle.semanticEvidenceIds,
@@ -222,7 +245,13 @@ final class GraphRagPipeline(
             )
           case None =>
             val input = SynthesisInput(op, parsed.window, bundle, got.pathNodeIds)
-            synthesizer.synthesize(input) match
+            // D6, RR6: a synthesizer that throws, returns null (instead of an Either), a null Left
+            // message, or a draft with nulls or non-finite numbers is a typed synthesis failure
+            // (abstain), never an exception and never a claim. Call and validation are both total.
+            val drafted = Total
+              .call("synthesizer failed")(synthesizer.synthesize(input))
+              .flatMap(d => Total.call("malformed answer")(DraftAnswer.validate(d)))
+            drafted match
               case Left(err) =>
                 val abs = Abstention.SynthesisFailed(err)
                 RagOutcome.Abstained(
@@ -244,9 +273,15 @@ final class GraphRagPipeline(
       i.researcherId -> i.displayName
     }.toMap
     val inBundle = bundle.core.items.map(_.evidenceId).toSet
+    val graphIds = bundle.graphById.keySet
     val claims   = checks.map { c =>
-      val text   = ClaimText.render(c.claim.assertion, names)
-      val ev     = c.claim.evidenceIds.filter(inBundle).distinct.sorted
+      val text = ClaimText.render(c.claim.assertion, names)
+      // R-09-11 (answer-assembly-rules-v1): semantic context is never support, so a claim whose
+      // verdict rests on graph facts lists only graph evidence. An UNSUPPORTED claim keeps every
+      // in-bundle ID it cited, so a reader can inspect what it rested on.
+      val shownAs: String => Boolean =
+        if c.verdict == Verdict.Unsupported then inBundle else graphIds
+      val ev     = c.claim.evidenceIds.filter(shownAs).distinct.sorted
       val status =
         if ev.isEmpty then VerificationStatus.Unsupported else c.verdict.core
       val confidence = c.verdict match
@@ -317,3 +352,36 @@ final class GraphRagPipeline(
               answerHash = Some(CanonicalHash.contentHash(Wire.encode(valid)))
             ))
           )
+
+/**
+ * Guards for calls into pluggable components (pipeline-component-guards-v1, RR6). The pipeline
+ * calls these instead of a component directly, so a component that throws or returns null cannot
+ * escape as an exception (a 500 through the API); it becomes a typed outcome instead.
+ */
+private[runtime] object Total:
+
+  /**
+   * Runs `f`. A throw, a null instead of an Either, or a Left with a null message becomes
+   * `Left(failure)`. A Right is returned as is; its content is the caller's to validate.
+   */
+  def call[A](failure: String)(f: => Either[String, A]): Either[String, A] =
+    Try(f) match
+      case Success(Right(a))             => Right(a)
+      case Success(Left(e)) if e != null => Left(e)
+      case _                             => Left(failure)
+
+  /** A retrieval result without nulls in the fields the pipeline reads. */
+  def wellFormed(r: Retrieved): Boolean =
+    r != null && r.facts != null && !r.facts.contains(null) && r.gap != null &&
+      r.pathNodeIds != null && !r.pathNodeIds.contains(null)
+
+  /**
+   * The semantic stage, total: a throw, a null context, or a context with null lists gives an empty
+   * context whose dropped list records the failure. Semantic context never supports a claim, so its
+   * failure never fails the answer.
+   */
+  def semantic(stage: Option[SemanticStage], question: String): SemanticContext =
+    Try(stage.fold(SemanticStage.empty)(_.search(question))).toOption
+      .flatMap(Option(_))
+      .filter(c => c.items != null && !c.items.contains(null) && c.dropped != null)
+      .getOrElse(SemanticContext.bounded(Nil, List("semantic stage failed")))

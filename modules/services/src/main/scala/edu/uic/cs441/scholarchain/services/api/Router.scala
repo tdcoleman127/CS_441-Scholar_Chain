@@ -92,9 +92,7 @@ final class Router(
       _ <- limiter.acquire(p.id)
       _ <- noQuery(req)
       _ <- Either.cond(
-        req.header(
-          "content-type"
-        ).exists(_.toLowerCase(java.util.Locale.ROOT).startsWith("application/json")),
+        req.header("content-type").exists(Router.isJson),
         (),
         ApiError.UnsupportedMediaType("application/json")
       )
@@ -274,3 +272,16 @@ object Router:
 
   /** Client-supplied method tokens are unbounded; only known methods are kept as labels. */
   def methodLabel(method: String): String = if KnownMethods(method) then method else "OTHER"
+
+  /**
+   * True when a Content-Type value is exactly the `application/json` media type (RFC 9110 section
+   * 8.3.1): the type and subtype before the first `;`, with optional whitespace around them,
+   * compare case-insensitively. Parameters after `;` (for example `charset=utf-8`) are tolerated. A
+   * longer subtype such as `application/jsonp` or `application/json-seq` is not JSON.
+   */
+  def isJson(contentType: String): Boolean =
+    val cut          = contentType.indexOf(';')
+    val raw          = if cut < 0 then contentType else contentType.substring(0, cut)
+    def ows(c: Char) = c == ' ' || c == '\t'
+    val mt           = raw.dropWhile(ows).reverse.dropWhile(ows).reverse
+    mt.equalsIgnoreCase("application/json")

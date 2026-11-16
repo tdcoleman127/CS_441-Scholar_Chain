@@ -2,10 +2,16 @@ package edu.uic.cs441.scholarchain.spark
 
 import edu.uic.cs441.scholarchain.core.json.Wire
 import edu.uic.cs441.scholarchain.core.model.*
-import edu.uic.cs441.scholarchain.er.{MatchPath, ResolutionRecord, ResolutionStatus}
+import edu.uic.cs441.scholarchain.er.{
+  Features,
+  MatchPath,
+  Outputs,
+  ResolutionRecord,
+  ResolutionStatus,
+  Resolver
+}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
-import upickle.default.write
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
@@ -21,8 +27,9 @@ import scala.jdk.CollectionConverters.*
  * Accepted mention links: a1-a2, a1-a2b, a2-a4, b1-b2, b2-b8, c1-c3, e4-e5, x8-x9, x9-x10, and
  * a1-zz (dangling). One accepted work-scope link (not applied). Conflict x8-x10 lies inside the
  * closure cluster {x8,x9,x10}, so that cluster is split (F2): x8, x9, x10 become the singleton
- * researchers X8, X9, X10 with identityStatus conflicted-split. Unresolved a1-a7 keeps a7 unmerged
- * (researcher A7).
+ * researchers X8, X9, X10 with identityStatus conflicted-split, and both of its links are written
+ * to identity-refused-links (conflicted-cluster-split). Unresolved a1-a7 keeps a7 unmerged
+ * (researcher A7). Rejected a4-e4 joins two different closure components, so it changes nothing.
  *
  * Researchers: A{a1,a2,a2b,a4} B{b1,b2,b8} C{c1,c3} E{e4,e5} merged; X8, X9, X10 conflicted-split;
  * singletons A7, D3, D7, F, G, U, V: 14.
@@ -44,6 +51,7 @@ class PartASuite extends munit.FunSuite:
 
   private val hadoopRun = "run:v1:" + "a" * 64
   private val erRun     = "run:v1:" + "b" * 64
+  private val erPolicy  = "er-policy-test"
   private val window    = YearWindow(2020, 2022)
   private val policy    = "graph-policy-test-v1"
 
@@ -115,30 +123,30 @@ class PartASuite extends munit.FunSuite:
       case ResolutionStatus.Accepted => MatchOutcome.Merge
       case ResolutionStatus.Rejected => MatchOutcome.NonMatch
       case _                         => MatchOutcome.NeedsReview
-    write(
-      ResolutionRecord(
-        1,
-        s"erdecision:v1:$pairId",
-        pairId,
-        scope,
-        "bk",
-        lo,
-        hi,
-        st,
-        MatchPath.Probabilistic,
-        outcome,
-        MatchDecider.Model,
-        Some(0.9),
-        0.9,
-        "er-policy-v2",
-        "er-features-v2",
-        None,
-        Nil,
-        Nil,
-        Provenance(SourceType.ScholarChainPipeline, pairId, erRun),
-        prov("w01"),
-        prov("w01")
-      )
+    ResolutionRecord(
+      Resolver.RecordSchemaVersion,
+      s"erdecision:v1:$pairId",
+      pairId,
+      scope,
+      "bk",
+      lo,
+      hi,
+      st,
+      MatchPath.Probabilistic,
+      outcome,
+      MatchDecider.Model,
+      Some(0.9),
+      0.9,
+      erPolicy,
+      Features.SpecVersion,
+      None,
+      Nil,
+      Nil,
+      Provenance(SourceType.ScholarChainPipeline, pairId, erRun),
+      prov("w01"),
+      prov("w01"),
+      Some(0.9),
+      Some(true)
     )
 
   private def writeLines(p: Path, lines: Seq[String]): Unit =
@@ -185,15 +193,20 @@ class PartASuite extends munit.FunSuite:
       "a1" -> "zz"
     ).map((a, b) => resolution("mention", mid(a), mid(b), ResolutionStatus.Accepted)) :+
       resolution("work", wid("w01"), wid("w02"), ResolutionStatus.Accepted)
+    // The ER directory is written by the real ER writer, so it carries a verified
+    // _DECISIONS_MANIFEST.json (Phase 11 repair-03 F2): one file per status.
     val er = root.resolve("er")
-    writeLines(er.resolve("accepted.jsonl"), acc)
-    writeLines(
-      er.resolve("conflict.jsonl"),
-      List(resolution("mention", mid("x8"), mid("x10"), ResolutionStatus.Conflict))
-    )
-    writeLines(
-      er.resolve("unresolved.jsonl"),
-      List(resolution("mention", mid("a1"), mid("a7"), ResolutionStatus.Unresolved))
+    Outputs.writeRun(
+      er,
+      acc ++ List(
+        resolution("mention", mid("x8"), mid("x10"), ResolutionStatus.Conflict),
+        resolution("mention", mid("a1"), mid("a7"), ResolutionStatus.Unresolved),
+        // A veto between two different closure components (A and E) changes nothing.
+        resolution("mention", mid("a4"), mid("e4"), ResolutionStatus.Rejected)
+      ),
+      10,
+      erRun,
+      erPolicy
     )
     PartAInputs(
       uri(root.resolve("team-extract/authorpapers")),
@@ -293,7 +306,8 @@ class PartASuite extends munit.FunSuite:
         lit(0).as("authorPosition"),
         lit("n").as("normalizedName"),
         lit(2020).as("year"),
-        struct(lit("dblp").as("sourceDataset")).as("provenance")
+        struct(lit("dblp").as("sourceDataset")).as("provenance"),
+        lit(null).cast("string").as("vetoConstrainedClosureAnchorMentionId")
       )
       val clusters = spark.range(10).select(
         col("id").cast("string").as("anchorMentionId"),
@@ -316,45 +330,61 @@ class PartASuite extends munit.FunSuite:
 
     assertEquals(r.failures, Nil, s"invariant failures: ${r.failures}")
     val expectCounts = List(
-      "inputAuthorPaperRows"              -> 22L,
-      "inputAuthorPaperMalformed"         -> 1L,
-      "mentions"                          -> 21L,
-      "erAcceptedRecords"                 -> 11L,
-      "erAcceptedWorkLinksNotApplied"     -> 1L,
-      "erAcceptedMentionLinks"            -> 10L,
-      "erAcceptedMentionLinksApplied"     -> 9L,
-      "erAcceptedMentionLinksDangling"    -> 1L,
-      "conflictedClusters"                -> 1L,
-      "conflictedClusterMentionsSplit"    -> 3L,
-      "researchers"                       -> 14L,
-      "researchersMerged"                 -> 4L,
-      "researchersConflictedSplit"        -> 3L,
-      "maxIdentityClusterSize"            -> 4L,
-      "works"                             -> 10L,
-      "authoredMentionsMissingWork"       -> 2L,
-      "authored"                          -> 18L,
-      "authoredCollapsedMentions"         -> 1L,
-      "inputPairRows"                     -> 13L,
-      "pairsExcluded:unresolved-endpoint" -> 1L,
-      "pairsExcluded:missing-work"        -> 1L,
-      "pairsExcluded:missing-year"        -> 1L,
-      "pairsExcluded:out-of-window"       -> 1L,
-      "pairsExcluded:self-pair"           -> 1L,
-      "pairsExcluded:conflicted-endpoint" -> 0L,
-      "pairsKept"                         -> 8L,
-      "pairsCollapsedSameWorkDuplicate"   -> 1L,
-      "coauthorEdges"                     -> 6L,
-      "maxJointPublicationCount"          -> 2L,
-      "researchersWithMetrics"            -> 10L,
-      "maxTeamSizeInWindow"               -> 3L,
-      "maxDistinctCoauthorCount"          -> 3L,
-      "components"                        -> 5L,
-      "largestComponentSize"              -> 5L,
-      "singletonResearchers"              -> 3L
+      "inputAuthorPaperRows"                          -> 22L,
+      "inputAuthorPaperMalformed"                     -> 1L,
+      "mentions"                                      -> 21L,
+      "erAcceptedRecords"                             -> 11L,
+      "erAcceptedWorkLinksNotApplied"                 -> 1L,
+      "erAcceptedMentionLinks"                        -> 10L,
+      "erAcceptedMentionLinksApplied"                 -> 9L,
+      "erAcceptedMentionLinksDangling"                -> 1L,
+      "conflictedClusters"                            -> 1L,
+      "conflictedClusterMentionsSplit"                -> 3L,
+      "erAcceptedMentionLinkPairs"                    -> 9L,
+      "erVetoMentionPairs"                            -> 3L,
+      "erVetoMentionPairsWithinClosure"               -> 1L,
+      "identityConstrainedComponents"                 -> 0L,
+      "identityConstrainedMentions"                   -> 0L,
+      "researchersVetoConstrained"                    -> 0L,
+      "identityLinksRefused:veto-would-join"          -> 0L,
+      "identityLinksRefused:conflicted-cluster-split" -> 2L,
+      "researchers"                                   -> 14L,
+      "researchersMerged"                             -> 4L,
+      "researchersConflictedSplit"                    -> 3L,
+      "maxIdentityClusterSize"                        -> 4L,
+      "works"                                         -> 10L,
+      "authoredMentionsMissingWork"                   -> 2L,
+      "authored"                                      -> 18L,
+      "authoredCollapsedMentions"                     -> 1L,
+      "inputPairRows"                                 -> 13L,
+      "pairsExcluded:unresolved-endpoint"             -> 1L,
+      "pairsExcluded:missing-work"                    -> 1L,
+      "pairsExcluded:missing-year"                    -> 1L,
+      "pairsExcluded:out-of-window"                   -> 1L,
+      "pairsExcluded:self-pair"                       -> 1L,
+      "pairsExcluded:conflicted-endpoint"             -> 0L,
+      "pairsKept"                                     -> 8L,
+      "pairsCollapsedSameWorkDuplicate"               -> 1L,
+      "coauthorEdges"                                 -> 6L,
+      "maxJointPublicationCount"                      -> 2L,
+      "researchersWithMetrics"                        -> 10L,
+      "maxTeamSizeInWindow"                           -> 3L,
+      "maxDistinctCoauthorCount"                      -> 3L,
+      "components"                                    -> 5L,
+      "largestComponentSize"                          -> 5L,
+      "singletonResearchers"                          -> 3L
     )
     val invNames = r.invariantFailures.map(_._1).toSet
     assert(invNames("conflicted-split-not-singleton"), invNames)
     assert(invNames("conflict-pair-same-researcher"), invNames)
+    List(
+      "veto-pair-same-researcher",
+      "refused-link-same-researcher",
+      "refused-link-missing-evidence",
+      "refused-link-duplicate",
+      "accepted-link-accounting",
+      "constrained-mention-unassigned"
+    ).foreach(n => assert(invNames(n), n))
     expectCounts.foreach((k, v) => assertEquals(r.count(k), v, k))
     assertEqualsDouble(r.largestComponentFraction, 0.5, 1e-12)
 
@@ -509,6 +539,33 @@ class PartASuite extends munit.FunSuite:
     val manifestText = spark.read.text(s"${r.outputBase}/manifest.json").collect()
       .map(_.getString(0)).mkString("\n")
     assertEquals(read[RunManifest](manifestText).runId, r.runId)
+
+    // F2 (repair-03): the verified ER run is recorded, and the ER manifest hash is a run input.
+    val erManifestSha =
+      "sha256:" +
+        Outputs.sha256Hex(Files.readAllBytes(root.resolve(s"er/${Outputs.ManifestFileName}")))
+    val erp = ujson.read(JobFiles.readText(spark, s"${r.outputBase}/params.json"))("erDecisions")
+    assertEquals(erp("pipelineRunId").str, erRun)
+    assertEquals(erp("policyVersion").str, erPolicy)
+    assertEquals(erp("featuresVersion").str, Features.SpecVersion)
+    assertEquals(erp("schemaVersion").num, Resolver.RecordSchemaVersion.toDouble)
+    assertEquals(erp("manifestSha256").str, erManifestSha)
+    assertEquals(
+      erp("files").arr.map(f => f("name").str -> f("recordCount").num.toLong).toList,
+      List(
+        "accepted.jsonl"   -> 11L,
+        "rejected.jsonl"   -> 1L,
+        "unresolved.jsonl" -> 1L,
+        "conflict.jsonl"   -> 1L
+      )
+    )
+    assert(
+      read[RunManifest](manifestText).inputs.contains(
+        RunInput(SourceType.ScholarChainPipeline, PartA.ErDecisionsManifestSnapshot, erManifestSha)
+      ),
+      manifestText
+    )
+    assertEquals(r.count("erDecisionDistinctRunIds"), 1L)
 
     // A rerun with the same attempt must refuse to overwrite.
     intercept[IllegalStateException](
