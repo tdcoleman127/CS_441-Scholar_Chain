@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Decision** | ACCEPTED WITH OPEN RISKS |
-| **Accepted commit** | `<fill in after commit>` |
+| **Accepted commit** | `e269427c4656aaf258557d5c693cddcd94ab573d` |
 | **Date** | 2026-11-22 to 2026-11-23 |
 | **Work order** | `docs/agent-runs/phase-13/prompt.md` (saved after the runs started) |
 | **Built by** | infra-engineer (Part A, Part B, repairs 01-04); experiment-engineer (dry runs) |
