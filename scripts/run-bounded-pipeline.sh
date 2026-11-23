@@ -81,7 +81,13 @@
 #   SCHOLARCHAIN_PIPELINE_SNAPSHOT_ID (default sample-manifest-v1),
 #   SCHOLARCHAIN_RUN_ID (run:v1:<64 hex>; generated when unset),
 #   SCHOLARCHAIN_PIPELINE_STEP_TIMEOUT_SECONDS (default 1800, max 3600),
-#   SCHOLARCHAIN_PIPELINE_RECORD_FILE (reports/deployments/<name>; key=value run record),
+#   SCHOLARCHAIN_PIPELINE_RECORD_FILE (reports/deployments/<name>; key=value run record, written on
+#     every outcome after the execution starts: COMPLETED, FAILED, FAILED-CLUSTER-UNVERIFIED,
+#     TIMEOUT, SUCCEEDED-OUTPUT-UNREADABLE, or SUCCEEDED-STEP-COUNT-MISMATCH. It holds the dataset
+#     snapshot, run ID, execution, cluster, step IDs (from the execution output, or from the execution
+#     history on failure), configuration (stage, fixed sizes, jar, inputs, execution-input SHA-256),
+#     output location, and start and end UTC times. Bucket names in record URIs carry the account
+#     as xxxxxxxx<last4> only (same convention as plan.sh)),
 #   AWS_PROFILE (standard AWS CLI variable).
 # The Spark config file (SCHOLARCHAIN_SPARK_CONFIG_URI) is shipped with spark-submit --files and
 # must hold the core configuration, including the graph.* keys ConfigLoader requires; it must not
@@ -618,6 +624,74 @@ INPUT_FILE="$WORK_DIR/execution-input.json"
   done
   printf '],"runEmbeddingIngestion":false}\n'
 } >"$INPUT_FILE"
+INPUT_SHA256="$(sha256sum "$INPUT_FILE")"
+INPUT_SHA256="${INPUT_SHA256%% *}"
+submitted=()
+cluster_id=""
+
+# Records keep the URI shape but never the full account ID: the 12-digit account suffix of a bucket
+# name (scholarchain-<env>-<purpose>-<account>, envs/dev/locals.tf) becomes xxxxxxxx<last4>, the same
+# last-4 convention as plan.sh's ACCOUNT marker. Only the bucket part of an s3:// or s3n:// URI is
+# rewritten, so object keys, hashes, and run IDs are untouched.
+redact_uri() { # uri
+  local u="$1" scheme bucket rest
+  if [[ "$u" =~ ^(s3n?://)([^/]+)(.*)$ ]]; then
+    scheme="${BASH_REMATCH[1]}"
+    bucket="${BASH_REMATCH[2]}"
+    rest="${BASH_REMATCH[3]}"
+    bucket="$(sed -E 's/(^|[^0-9])[0-9]{8}([0-9]{4})([^0-9]|$)/\1xxxxxxxx\2\3/g' <<<"$bucket")"
+    printf '%s%s%s' "$scheme" "$bucket" "$rest"
+  else
+    printf '%s' "$u"
+  fi
+}
+
+# Run record (optional file). Written on every outcome once the execution has started, so failed and
+# timed-out runs are never silently dropped.
+write_record() { # status
+  [[ -n "$RECORD_FILE" ]] || return 0
+  local u
+  mkdir -p -- "$(dirname -- "$RECORD_FILE")"
+  {
+    printf 'status=%s\n' "$1"
+    printf 'environment=%s\n' "$ENVIRONMENT"
+    printf 'region=%s\n' "$SCHOLARCHAIN_AWS_REGION"
+    printf 'stage=%s\n' "$STAGE"
+    printf 'git_sha=%s\n' "$GIT_SHA"
+    printf 'execution=%s\n' "$EXECUTION_NAME"
+    printf 'cluster_id=%s\n' "${cluster_id:-unknown}"
+    printf 'jar_uri=%s\n' "$(redact_uri "$JAR_URI")"
+    printf 'run_id=%s\n' "$RUN_ID"
+    printf 'snapshot=%s\n' "$SNAPSHOT_ID"
+    printf 'output=%s\n' "$(redact_uri "$RUN_OUTPUT")"
+    printf 'steps=%s\n' "$(join_by , "${submitted[@]}")"
+    printf 'step_names=%s\n' "$(join_by , "${STEP_NAMES[@]}")"
+    printf 'started_utc=%s\n' "$started_utc"
+    printf 'ended_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'execution_input_sha256=%s\n' "$INPUT_SHA256"
+    printf 'config_step_timeout_seconds=%s\n' "$STEP_TIMEOUT_SECONDS"
+    printf 'config_max_steps=%s\n' "$MAX_STEPS"
+    case "$STAGE" in
+      hadoop)
+        printf 'config_reducers=%s oversize=%s export_partitions=%s max_block=%s\n' "$SMOKE_REDUCERS" \
+          "$SMOKE_OVERSIZE" "$SMOKE_EXPORT_PARTITIONS" "$SMOKE_MAX_BLOCK"
+        for u in "${check_inputs[@]}"; do printf 'input=%s\n' "$(redact_uri "$u")"; done
+        ;;
+      *)
+        printf 'config_shuffle_partitions=%s cc_max_iterations=%s lp_iterations=%s max_path_depth=%s kcore_max_rounds=%s\n' \
+          "$SPARK_SHUFFLE_PARTITIONS" "$SPARK_CC_MAX_ITERATIONS" "$SPARK_LP_ITERATIONS" "$SPARK_MAX_PATH_DEPTH" \
+          "$SPARK_KCORE_MAX_ROUNDS"
+        printf 'config_uri=%s\n' "$(redact_uri "$SCHOLARCHAIN_SPARK_CONFIG_URI")"
+        if [[ "$STAGE" == "spark-part-a" ]]; then
+          for u in "$SCHOLARCHAIN_HADOOP_RUN_OUTPUT" "$SCHOLARCHAIN_ER_DECISIONS_URI"; do printf 'input=%s\n' "$(redact_uri "$u")"; done
+        else
+          for u in "$SCHOLARCHAIN_SPARK_PART_A_RUN_DIR" "$SCHOLARCHAIN_SPARK_PATH_PAIRS_URI"; do printf 'input=%s\n' "$(redact_uri "$u")"; done
+        fi
+        ;;
+    esac
+  } >"$RECORD_FILE"
+  marker "RECORD file=$RECORD_FILE status=$1"
+}
 
 # ---------------------------------------------------------------------------------------------
 # Counters and failure evidence (best effort; read-only)
@@ -677,6 +751,7 @@ while :; do
     marker "TIMEOUT execution=$EXECUTION_NAME still $status after the polling deadline; it was not stopped"
     marker "MANUAL inspect (read-only): aws stepfunctions describe-execution --execution-arn $execution_arn"
     marker "MANUAL the state machine terminates the cluster on its own step timeout; a human who stops the execution must also terminate the cluster (stopping skips the Catch; the idle timeout is the backstop)"
+    write_record TIMEOUT
     marker "RESULT status=TIMEOUT run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT execution=$EXECUTION_NAME"
     exit 5
   fi
@@ -691,13 +766,15 @@ if [[ "$status" != "SUCCEEDED" ]]; then
   history="$(aws_call stepfunctions get-execution-history --execution-arn "$execution_arn" \
     --max-items 200 --output json 2>/dev/null || true)"
   cluster_id="$(printf '%s' "$history" | extract_cluster_id)"
+  # The EMR step IDs seen in the execution history go into the FAILED records (steps=).
+  mapfile -t submitted < <(printf '%s' "$history" | extract_step_ids)
   state="UNKNOWN"
   if [[ -n "$cluster_id" ]]; then
     marker "EXECUTION-FAILURE cluster=$cluster_id"
     aws_call emr list-steps --cluster-id "$cluster_id" \
       --query 'Steps[].[Id,Name,Status.State,Status.FailureDetails.Reason,Status.FailureDetails.LogFile]' \
       --output text 2>/dev/null | sed "s/^/[$SCRIPT_NAME] STEP-FAILURE /" || true
-    for sid in $(printf '%s' "$history" | extract_step_ids); do
+    for sid in "${submitted[@]}"; do
       print_step_counters "$cluster_id" "$sid"
     done
     state="$(aws_call emr describe-cluster --cluster-id "$cluster_id" --query 'Cluster.Status.State' \
@@ -715,6 +792,7 @@ if [[ "$status" != "SUCCEEDED" ]]; then
   esac
   if ((cluster_verified)); then
     marker "CLUSTER id=$cluster_id state=$state (termination verified)"
+    write_record FAILED
     marker "RESULT status=FAILED run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT execution=$EXECUTION_NAME"
     die 4 "pipeline execution $EXECUTION_NAME ended $status; later steps were not run; cluster $cluster_id is $state"
   fi
@@ -729,16 +807,24 @@ if [[ "$status" != "SUCCEEDED" ]]; then
   else
     marker "MANUAL inspect (read-only): aws emr list-clusters --active (look for the name scholarchain-$ENVIRONMENT-pipeline-$EXECUTION_NAME)"
   fi
+  write_record FAILED-CLUSTER-UNVERIFIED
   marker "RESULT status=FAILED run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT execution=$EXECUTION_NAME"
   die 4 "pipeline execution $EXECUTION_NAME ended $status; later steps were not run; cluster termination was NOT verified (see the MANUAL lines)"
 fi
 
-exec_output="$(aws_call stepfunctions describe-execution --execution-arn "$execution_arn" \
-  --query output --output text)" || die 4 "cannot read the execution output"
+if ! exec_output="$(aws_call stepfunctions describe-execution --execution-arn "$execution_arn" \
+  --query output --output text)"; then
+  write_record SUCCEEDED-OUTPUT-UNREADABLE
+  marker "RESULT status=FAILED run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT execution=$EXECUTION_NAME (execution SUCCEEDED, output unreadable)"
+  die 4 "cannot read the execution output"
+fi
 cluster_id="$(printf '%s' "$exec_output" | extract_cluster_id)"
 mapfile -t submitted < <(printf '%s' "$exec_output" | extract_step_ids)
-((${#submitted[@]} == ${#STEP_NAMES[@]})) ||
+if ((${#submitted[@]} != ${#STEP_NAMES[@]})); then
+  write_record SUCCEEDED-STEP-COUNT-MISMATCH
+  marker "RESULT status=FAILED run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT execution=$EXECUTION_NAME (execution SUCCEEDED, step IDs ${#submitted[@]} of ${#STEP_NAMES[@]})"
   die 4 "execution output lists ${#submitted[@]} step ID(s), expected ${#STEP_NAMES[@]}"
+fi
 marker "CLUSTER id=${cluster_id:-unknown} (terminated by the state machine)"
 for idx in "${!submitted[@]}"; do
   marker "STEP-RESULT step=${submitted[$idx]} name=${STEP_NAMES[$idx]} main=${STEP_MAINS[$idx]} state=COMPLETED"
@@ -760,21 +846,6 @@ case "$STAGE" in
     ;;
   *) marker "OUTPUT stage=$STAGE root=$RUN_OUTPUT (the run=<id> directory is in the COUNTERS PART-A/PART-B output= line)" ;;
 esac
-if [[ -n "$RECORD_FILE" ]]; then
-  mkdir -p -- "$(dirname -- "$RECORD_FILE")"
-  {
-    printf 'environment=%s\n' "$ENVIRONMENT"
-    printf 'stage=%s\n' "$STAGE"
-    printf 'git_sha=%s\n' "$GIT_SHA"
-    printf 'execution=%s\n' "$EXECUTION_NAME"
-    printf 'cluster_id=%s\n' "${cluster_id:-unknown}"
-    printf 'jar_uri=%s\n' "$JAR_URI"
-    printf 'run_id=%s\n' "$RUN_ID"
-    printf 'snapshot=%s\n' "$SNAPSHOT_ID"
-    printf 'output=%s\n' "$RUN_OUTPUT"
-    printf 'steps=%s\n' "$(join_by , "${submitted[@]}")"
-  } >"$RECORD_FILE"
-  marker "RECORD file=$RECORD_FILE"
-fi
+write_record COMPLETED
 marker "RESULT status=COMPLETED run_id=$RUN_ID stage=$STAGE output=$RUN_OUTPUT steps=$(join_by , "${submitted[@]}")"
 step_ok "$final" "bounded pipeline run complete"

@@ -26,7 +26,29 @@
 # reference is rewritten. The release_run_id in the base revision is printed (PROVENANCE marker).
 # Procedure: change the environment in Terraform, the human applies it, then deploy.sh rolls it out.
 #
+# Human approval (Phase 13 "require an explicitly approved plan checksum or the documented
+# human-approval mechanism"): SCHOLARCHAIN_APPROVED_PLAN_SHA256 must be the SHA-256 of the plan the
+# human approved and applied. A committed docs/agent-runs/phase-*/human-gate.md at HEAD (only the
+# human writes human-gate.md) must contain this exact full line (no leading or trailing characters):
+#   APPROVED-DEPLOY-PLAN-SHA256: <64 lowercase hex> env=<env>
+# Approval is strict: the line is matched as a whole line (anchored git grep -E) in the HEAD tree, so
+# uncommitted edits, a bare checksum, or the checksum inside other text never approve.
+# Revocation is lenient (fail closed): the checksum is revoked when ANY line of a committed
+# human-gate.md at HEAD contains both the token REVOKED-DEPLOY-PLAN-SHA256 and the checksum, each
+# matched case-insensitively anywhere on that line. So "REVOKED-DEPLOY-PLAN-SHA256: <sha> env=dev",
+# "- REVOKED-DEPLOY-PLAN-SHA256: <sha>", backticks, trailing spaces, or an uppercase checksum all
+# revoke. The checksum is searched as a fixed string with --text (git grep --text -i -F), so a
+# binary-looking blob is still searched line by line; no regex is built from input.
+# The matching gate file is printed.
+# Plain text required (fail closed): before either search, every committed human-gate.md at HEAD
+# must be plain text. A gate whose blob holds a NUL byte (binary, or UTF-16 with or without BOM) or
+# starts with a UTF-16 byte-order mark (FF FE or FE FF) is refused by name; save gates as UTF-8. Any
+# "Binary file ... matches" line in the approval or revocation search output is also refused.
+# The script cannot read state, so it cannot prove the applied plan equals that file; the human gate
+# records it. The deploy-engineer ask prompt for this script is the second approval point.
+#
 # Required environment variables (names only; values from `terraform output runtime`):
+#   SCHOLARCHAIN_APPROVED_PLAN_SHA256 (64 hex; the human-approved, applied plan checksum),
 #   SCHOLARCHAIN_AWS_REGION, SCHOLARCHAIN_ECR_REPOSITORY_URL (runtime.ecr_repository_url),
 #   SCHOLARCHAIN_API_TASK_DEFINITION_ARN (runtime.task_definitions.api),
 #   SCHOLARCHAIN_WORKER_TASK_DEFINITION_ARN (runtime.task_definitions.worker)
@@ -93,10 +115,13 @@ done
 ((approved)) || die 2 "environment '$ENVIRONMENT' is not approved (approved: dev)"
 
 step_begin 0 "verify environment '$ENVIRONMENT', tools, and configuration"
-for tool in aws git docker sbt timeout sed grep mktemp cmp tr; do
+for tool in aws git docker sbt timeout sed grep mktemp cmp tr head od wc; do
   command -v "$tool" >/dev/null 2>&1 || die 2 "required tool not found on PATH: $tool"
 done
 [[ "${SCHOLARCHAIN_AWS_REGION:-}" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || die 2 "SCHOLARCHAIN_AWS_REGION is unset or invalid"
+APPROVED_PLAN_SHA256="${SCHOLARCHAIN_APPROVED_PLAN_SHA256:-}"
+[[ "$APPROVED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] ||
+  die 2 "SCHOLARCHAIN_APPROVED_PLAN_SHA256 must be the 64-hex SHA-256 of the human-approved, applied plan"
 readonly NAME_PREFIX="scholarchain-$ENVIRONMENT"
 readonly REPO_NAME="$NAME_PREFIX-services"
 readonly CLUSTER="$NAME_PREFIX"
@@ -137,7 +162,66 @@ GIT_SHA="$(git rev-parse HEAD)"
 [[ "$GIT_SHA" =~ ^[0-9a-f]{40}$ ]] || die 3 "unexpected Git SHA: $GIT_SHA"
 IMAGE="$REPO_URL:$GIT_SHA"
 marker "REVISION git_sha=$GIT_SHA image_tag=$GIT_SHA"
-step_ok 1 "clean tree"
+# The approved plan checksum must be recorded by the human as an exact approval line in a committed
+# human gate at HEAD, and must not be revoked by any committed gate line that names the revocation
+# token and the checksum (lenient, fail closed; see the header).
+readonly GATE_PATHSPEC='docs/agent-runs/*/human-gate.md'
+readonly REVOKE_TOKEN_LC="revoked-deploy-plan-sha256"
+APPROVAL_LINE="APPROVED-DEPLOY-PLAN-SHA256: $APPROVED_PLAN_SHA256 env=$ENVIRONMENT"
+# git grep has no -x (whole-line) option, so the whole line is matched with an anchored ERE. The
+# line contains only [A-Za-z0-9:= -] (the checksum is 64 lowercase hex and the environment is from
+# APPROVED_ENVIRONMENTS, both validated in step 0), so no character is an ERE metacharacter.
+[[ "$APPROVAL_LINE" =~ ^[A-Za-z0-9:=\ -]+$ ]] || die 2 "approval line contains unexpected characters; refusing"
+# Plain-text precondition (fail closed, review R3-1): every committed gate at HEAD must be plain text.
+# git grep treats a blob with a NUL byte as binary and prints only "Binary file ... matches", which
+# would hide a revocation; a UTF-16 gate (for example PowerShell 5.1 `>` output) never matches at all.
+# A gate is refused when its blob contains a NUL byte (byte count with NULs removed differs from the
+# blob size; this also catches BOM-less UTF-16) or starts with a UTF-16 BOM (FF FE or FE FF). Gates
+# are listed with the same pathspec as the searches below (-e '' matches every non-empty file; an
+# empty gate holds no NUL and needs no check). A quoted or unreadable path fails cat-file and refuses.
+grep_rc=0
+gate_files="$(git grep -l --text -e '' HEAD -- "$GATE_PATHSPEC" 2>/dev/null)" || grep_rc=$?
+((grep_rc == 0 || grep_rc == 1)) || die 3 "git grep listing the committed human gates failed (exit $grep_rc); refusing"
+while IFS= read -r g; do
+  [[ -n "$g" ]] || continue
+  [[ "$g" == HEAD:* ]] || die 3 "unexpected git grep output while listing human gates: $g"
+  g_size="$(git cat-file -s "$g" 2>/dev/null)" || die 3 "cannot read committed human gate ${g#HEAD:}; refusing"
+  g_text="$(git cat-file blob "$g" | LC_ALL=C tr -d '\000' | wc -c)" || die 3 "cannot read committed human gate ${g#HEAD:}; refusing"
+  ((g_size == g_text)) ||
+    die 3 "committed human gate ${g#HEAD:} contains NUL bytes (binary or UTF-16); a gate must be plain text (UTF-8 or ASCII); refusing"
+  g_bom="$({ git cat-file blob "$g" || true; } | od -An -tx1 -N2 | tr -d ' \n')"
+  [[ "$g_bom" != "fffe" && "$g_bom" != "feff" ]] ||
+    die 3 "committed human gate ${g#HEAD:} starts with a UTF-16 byte-order mark; a gate must be plain text (UTF-8 or ASCII); refusing"
+done <<<"$gate_files"
+grep_rc=0
+approval_files="$(git grep -l -E -e "^${APPROVAL_LINE}\$" HEAD -- "$GATE_PATHSPEC" 2>/dev/null)" || grep_rc=$?
+((grep_rc == 0 || grep_rc == 1)) || die 3 "git grep for the approval line failed (exit $grep_rc); refusing"
+if grep -q '^Binary file ' <<<"$approval_files"; then die 3 "git grep reported a binary human gate during the approval search; refusing"; fi
+[[ -n "$approval_files" ]] ||
+  die 3 "no committed $GATE_PATHSPEC at HEAD contains the exact line '$APPROVAL_LINE'; refusing (human approval missing)"
+# Revocation: every committed gate line that contains the checksum (fixed string, any case), then the
+# token on that same line (any case). Output lines are HEAD:<path>/human-gate.md:<content>.
+grep_rc=0
+sha_lines="$(git grep --text -i -F -e "$APPROVED_PLAN_SHA256" HEAD -- "$GATE_PATHSPEC" 2>/dev/null)" || grep_rc=$?
+((grep_rc == 0 || grep_rc == 1)) || die 3 "git grep for revocation lines failed (exit $grep_rc); refusing"
+if grep -q '^Binary file ' <<<"$sha_lines"; then die 3 "git grep reported a binary human gate during the revocation search; refusing"; fi
+revoked=0
+while IFS= read -r l; do
+  [[ -n "$l" ]] || continue
+  content="${l#*/human-gate.md:}"
+  content_lc="${content,,}"
+  if [[ "$content_lc" == *"$REVOKE_TOKEN_LC"* && "$content_lc" == *"$APPROVED_PLAN_SHA256"* ]]; then
+    gate="${l#HEAD:}"
+    gate="${gate%%/human-gate.md:*}/human-gate.md"
+    marker "REVOKED plan_sha256=$APPROVED_PLAN_SHA256 revoked_in=$gate"
+    revoked=1
+  fi
+done <<<"$sha_lines"
+((revoked == 0)) || die 3 "plan checksum $APPROVED_PLAN_SHA256 is revoked in a committed human gate; refusing"
+APPROVAL_FILE="$(head -n 1 <<<"$approval_files")"
+APPROVAL_FILE="${APPROVAL_FILE#HEAD:}"
+marker "APPROVAL plan_sha256=$APPROVED_PLAN_SHA256 env=$ENVIRONMENT recorded_in=$APPROVAL_FILE"
+step_ok 1 "clean tree and recorded approval"
 
 # ---- Step 2: read-only preflight ------------------------------------------------------------------------
 
@@ -308,6 +392,9 @@ if [[ -n "$RECORD_FILE" ]]; then
   {
     printf 'environment=%s\n' "$ENVIRONMENT"
     printf 'git_sha=%s\n' "$GIT_SHA"
+    printf 'approved_plan_sha256=%s\n' "$APPROVED_PLAN_SHA256"
+    printf 'approval_record=%s\n' "$APPROVAL_FILE"
+    printf 'image=%s\n' "$REPO_NAME:$GIT_SHA"
     printf 'image_digest=%s\n' "$DIGEST"
     for svc in "${SERVICES[@]}"; do
       printf 'service=%s base=%s previous=%s new=%s release_run_id=%s\n' "$svc" "${BASE_TD[$svc]##*/}" \
@@ -316,4 +403,4 @@ if [[ -n "$RECORD_FILE" ]]; then
   } >"$RECORD_FILE"
   marker "RECORD file=$RECORD_FILE"
 fi
-marker "RESULT status=DEPLOYED git_sha=$GIT_SHA digest=$DIGEST api=${NEW_TD[${SERVICES[0]}]##*/} worker=${NEW_TD[${SERVICES[1]}]##*/} release_run_id=${RELEASE_RUN_ID[${SERVICES[0]}]}"
+marker "RESULT status=DEPLOYED git_sha=$GIT_SHA plan_sha256=$APPROVED_PLAN_SHA256 digest=$DIGEST api=${NEW_TD[${SERVICES[0]}]##*/} worker=${NEW_TD[${SERVICES[1]}]##*/} release_run_id=${RELEASE_RUN_ID[${SERVICES[0]}]}"
