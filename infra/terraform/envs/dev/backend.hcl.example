@@ -1,0 +1,4 @@
+# Copy to backend.hcl (keep it uncommitted) after the human applies infra/terraform/bootstrap.
+# The bucket name is the bootstrap output state_bucket_name: scholarchain-tfstate-<account id>-us-east-1.
+# Usage: terraform init -backend-config=backend.hcl
+bucket = "scholarchain-tfstate-000000000000-us-east-1"

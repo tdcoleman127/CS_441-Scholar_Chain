@@ -39,13 +39,26 @@ secrets/
 credentials.json
 .credentials.json
 
-# Terraform local state and caches (the dependency lock file .terraform.lock.hcl is committed)
+# Terraform local state and caches (the dependency lock file .terraform.lock.hcl is committed).
+# *.tfvars holds local values (for example the budget alert email) and is never committed;
+# only *.tfvars.example files with dummy values are committed.
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+!*.tfvars.example
 *.tfplan
 crash.log
 crash.*.log
+# Backend configuration holds the real state bucket name (which contains the account ID); only
+# backend.hcl.example is committed. .terraform.lock.hcl is not matched and stays committed.
+backend.hcl
+*.backend.hcl
+# Per-machine override files (standard HashiCorp entries); *.example templates are not matched.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Python tooling caches (dataset and helper scripts)
 __pycache__/

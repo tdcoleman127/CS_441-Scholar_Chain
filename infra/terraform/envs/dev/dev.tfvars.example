@@ -1,0 +1,105 @@
+# Copy to dev.tfvars (ignored by Git through *.tfvars) and replace the dummy values.
+# Dummy values only: no real address, account ID, ARN, or secret is committed.
+
+# Decision D1: budget alert recipients. Required; there is no default.
+budget_notification_emails = ["budget-alerts@example.invalid"]
+
+budget_limit_usd  = 25
+budget_start_date = "2026-11-01_00:00"
+
+# Turn on after AWS Billing has seen the scholarchain:* tag keys (payer account only).
+activate_cost_allocation_tags = false
+
+# Course cleanup mode (explicit). false for normal work. Set true only for an approved cleanup:
+# it lets terraform destroy remove non-empty data buckets and uses 7-day KMS and secret windows.
+data_cleanup_mode = false
+
+kms_deletion_window_days          = 30
+noncurrent_version_retention_days = 30
+log_retention_days                = 30
+
+vpc_cidr           = "10.42.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Public ALB ingress (decision D12). Narrow to your own CIDR if you can.
+alb_ingress_cidrs = ["0.0.0.0/0"]
+
+# Interface endpoints: USD 0.01/h per AZ each. Enable with enable_runtime (ECS needs ecr_api,
+# ecr_dkr, logs, secretsmanager; Bedrock calls need bedrock_runtime; vector queries need s3vectors).
+interface_endpoints = {
+  ecr_api         = false
+  ecr_dkr         = false
+  logs            = false
+  secretsmanager  = false
+  bedrock_runtime = false
+  s3vectors       = false
+}
+interface_endpoint_az_count = 1
+
+# Principals allowed to assume the deployment role (dummy shown). Empty list: no deployment role.
+deployer_principal_arns = []
+# deployer_principal_arns = ["arn:aws:iam::000000000000:role/example-deployer"]
+
+# Principals allowed to assume scholarchain-dev-pipeline-runner, the role that runs
+# scripts/run-bounded-pipeline.sh (dummy shown). Empty list: no pipeline-runner role.
+pipeline_runner_principal_arns = []
+# pipeline_runner_principal_arns = ["arn:aws:iam::000000000000:role/example-pipeline-runner"]
+
+# Decision D13.
+generation_model_id = "amazon.nova-micro-v1:0"
+embedding_model_id  = "amazon.nova-2-multimodal-embeddings-v1:0"
+embedding_dimension = 1024
+
+# Decisions D7 and D8. Both default false: neither Neptune nor the runtime stack exists until the
+# human turns it on for a bounded session.
+enable_runtime = false
+enable_neptune = false
+
+# ALB deletion protection, independent of data_cleanup_mode. Keep false in dev: enable_runtime = false
+# must remove the ALB (it holds no data) without turning on data_cleanup_mode.
+alb_deletion_protection = false
+
+# EMR transient cluster per pipeline run (D5, D6): On-Demand only, small, idle backstop.
+emr_release_label           = "emr-7.14.0"
+emr_instance_type           = "m5.xlarge"
+emr_core_instance_count     = 2
+emr_core_max_instance_count = 2
+emr_idle_timeout_seconds    = 1800
+emr_max_steps               = 6
+emr_step_timeout_seconds    = 3600
+
+# Neptune Serverless (D7). COURSE CLEANUP MODE, dev only: deletion protection off and no final
+# snapshot, so terraform destroy (or enable_neptune = false) removes the cluster and its data.
+# A persistent environment would set neptune_deletion_protection = true and
+# neptune_skip_final_snapshot = false.
+neptune_engine_version         = "1.4.8.1"
+neptune_parameter_group_family = "neptune1.4"
+neptune_min_capacity           = 1.0
+neptune_max_capacity           = 2.5
+neptune_deletion_protection    = false
+neptune_skip_final_snapshot    = true
+neptune_backup_retention_days  = 1
+
+# Runtime (D8, D11, D12). Set these before enable_runtime = true. Dummy values shown.
+image_tag            = "" # full 40-character Git SHA pushed by scripts/deploy.sh
+release_run_id       = "" # run:v1:<64 hex> of the release whose exports the API serves
+api_desired_count    = 1
+worker_desired_count = 0 # no worker consumer exists in modules/services yet
+health_check_path    = "/healthz"
+runtime_algorithm_env = {
+  # Copy the values of the release's versioned configuration (no defaults exist in core).
+  # SCHOLARCHAIN_ER_POLICY_VERSION       = "example-policy"
+  # SCHOLARCHAIN_ER_AUTO_MATCH_THRESHOLD = "0.9"
+  # SCHOLARCHAIN_ER_REVIEW_THRESHOLD     = "0.7"
+  # SCHOLARCHAIN_GRAPH_WINDOW_START_YEAR = "2000"
+  # SCHOLARCHAIN_GRAPH_WINDOW_END_YEAR   = "2024"
+  # SCHOLARCHAIN_GRAPH_POLICY_VERSION    = "example-graph-policy"
+  # SCHOLARCHAIN_BRIDGE_ALGORITHM        = "example"
+  # SCHOLARCHAIN_BRIDGE_MAX_ITERATIONS   = "10"
+  # SCHOLARCHAIN_BRIDGE_MIN_EDGE_WEIGHT  = "1.0"
+}
+embedding_ingestion_command = [] # empty until an ingestion entrypoint exists in code
+
+# Observability.
+flow_log_traffic_type         = "REJECT"
+cloudwatch_log_retention_days = 30

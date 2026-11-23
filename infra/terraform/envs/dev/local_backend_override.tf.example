@@ -1,0 +1,14 @@
+# Local-backend fallback (decision D4), for use only until the human applies the bootstrap root.
+#
+#   cp local_backend_override.tf.example local_backend_override.tf
+#   terraform init -reconfigure
+#
+# Terraform merges *_override.tf files over the main configuration, so this replaces the S3 backend
+# with a local one. The local state file (terraform.tfstate) is ignored by Git through *.tfstate.
+# Never commit local_backend_override.tf. Delete it and run
+# `terraform init -migrate-state -backend-config=backend.hcl` once the bootstrap bucket exists.
+terraform {
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
