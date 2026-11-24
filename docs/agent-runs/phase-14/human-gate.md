@@ -70,6 +70,33 @@ the plan output. Stop and present the checksum, the counts, and the cost for my 
 
 
 
-Step 1b-0 approved and applied, plan checksum ---, result 2 added / 0 changed / 0 destroyed;
+Step 1b-0 approved and applied, plan checksum f031d9c9ed5a5f827d5774040c603a0e6be7d7800c69c88600ba6b90a3f0e26a, result 2 added / 0 changed / 0 destroyed;
 the deployment role is trusted to the ScholarChainAdmin SSO role;
 you applied it manually with scholarchain-admin.
+
+
+## Phase 14 human sign-off (2026-11-24)
+
+### Step 1a: runtime_mode fixture variable
+- Accepted. code-reviewer APPROVE. Committed in ef95a6b.
+- Decision: fixture mode for Phase 14 only; set runtime_mode back to "aws" after Phase 15 loads real data.
+
+### Step 1b-0: deployment role
+- Approved and applied by the human outside Claude with scholarchain-admin.
+- Plan sha256 f031d9c9ed5a5f827d5774040c603a0e6be7d7800c69c88600ba6b90a3f0e26a; 2 added, 0 changed, 0 destroyed. code-reviewer APPROVE.
+- scholarchain-dev-deployment is trusted to the ScholarChainAdmin SSO role only. Reason: package.sh refuses admin-named push profiles. Bootstrap image ef95a6b5d14a3e911420c5b37112d7a73a2eaf37 pushed with scholarchain-deploy.
+
+### Step 1b: runtime plan (fixture mode)
+- Plan dev-ef95a6b5d14a-20261124T074204Z.tfplan, sha256 8ce269bf42fb54f925bef35a5c990ac2529ea4d7e85ec320f8343089b9fa3668.
+- 17 to add, 1 to change, 0 to destroy; no IAM changes; no stateful actions. code-reviewer APPROVE (one minor report correction).
+- Target: account ending 9340, us-east-1, environment dev.
+- Cost accepted: about USD 0.10-0.11 per hour while on (estimated). Turn off with enable_runtime = false AND the four interface endpoints false.
+- Public exposure: ACCEPTED for short fixture sessions (ALB 0.0.0.0/0, HTTP:80; API key required for /v1; synthetic data).
+
+APPROVED-DEPLOY-PLAN-SHA256: 8ce269bf42fb54f925bef35a5c990ac2529ea4d7e85ec320f8343089b9fa3668 env=dev
+
+### Manual interventions
+- Human applied plans outside Claude with scholarchain-admin.
+- Human wrote the API key digest secret and pushed the bootstrap image with package.sh --push.
+- Human ran terraform fmt on the local dev.tfvars after Step 1b attempt 1 failed the fmt check.
+- Human runs deploy.sh (scholarchain-deploy profile) and smoke-test.sh in Git Bash; deploy-engineer verifies read-only and writes the deployment report.
