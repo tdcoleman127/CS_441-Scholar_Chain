@@ -332,6 +332,17 @@ variable "image_tag" {
   }
 }
 
+variable "runtime_mode" {
+  description = "SCHOLARCHAIN_RUNTIME_MODE for the API and worker (modules/services Main.scala). aws (default) serves the release named by release_run_id from S3 and DynamoDB. fixture serves the built-in SYNTHETIC release (services LocalFixture) and reads no data store; Phase 14 only, before real data is loaded."
+  type        = string
+  default     = "aws"
+
+  validation {
+    condition     = contains(["aws", "fixture"], var.runtime_mode)
+    error_message = "runtime_mode must be exactly \"aws\" or \"fixture\"."
+  }
+}
+
 variable "release_run_id" {
   description = "SCHOLARCHAIN_RELEASE_RUN_ID for the API and worker (run:v1:<64 hex>)."
   type        = string

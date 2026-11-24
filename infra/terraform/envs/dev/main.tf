@@ -172,9 +172,11 @@ module "neptune" {
 locals {
   # Every key below is read by core ConfigLoader.EnvBindings or services Main.scala. Values are
   # names and IDs only; SCHOLARCHAIN_API_KEYS comes from Secrets Manager by ARN (modules/runtime).
+  # With runtime_mode = "fixture", Main.scala reads only the mode, the SCHOLARCHAIN_SVC_* settings,
+  # and SCHOLARCHAIN_API_KEYS; the other keys are passed unchanged and ignored.
   container_environment = merge(
     {
-      SCHOLARCHAIN_RUNTIME_MODE          = "aws"
+      SCHOLARCHAIN_RUNTIME_MODE          = var.runtime_mode # aws (default) or fixture (Phase 14 only)
       SCHOLARCHAIN_RELEASE_RUN_ID        = var.release_run_id
       SCHOLARCHAIN_PROFILE               = local.environment
       SCHOLARCHAIN_AWS_REGION            = local.region

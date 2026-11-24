@@ -18,6 +18,8 @@
 #   5 terraform fmt -check -recursive infra/terraform
 #   6 terraform validate infra/terraform/bootstrap   (init -backend=false, temporary TF_DATA_DIR)
 #   7 terraform validate infra/terraform/envs/dev    (init -backend=false, temporary TF_DATA_DIR)
+#     Steps 6 and 7 then run `terraform test` when the root has tests/*.tftest.hcl (plan-only
+#     against a mock_provider, so still no credentials and no AWS call).
 #   8 sbt -batch check (build.sbt alias: scalafmt checks, compile, Test/compile, every aggregated test
 #     task including the AWS-free contract tests in tests/contracts, then markTestRun)
 #   9 the Git working tree is unchanged during the run: a read-only content fingerprint (status, the
@@ -354,8 +356,22 @@ gate_tf_validate() {
     terraform validate -no-color) || rc=$?
   if ((rc != 0)); then
     marker "TF-FAIL root=$rel step=validate exit=$rc"
+    return "$rc"
   fi
-  return "$rc"
+  # terraform test, only when the root has tests/*.tftest.hcl. The tests run plan-only against a
+  # mock_provider: no credentials, no AWS call, no backend, no state.
+  if compgen -G "$rel/tests/*.tftest.hcl" >/dev/null; then
+    (cd -- "$rel" && TF_DATA_DIR="$(native_path "$data_dir")" timeout -k "$KILL_GRACE_SECONDS" "$TF_TIMEOUT_SECONDS" \
+      terraform test -no-color) || rc=$?
+    if ((rc != 0)); then
+      marker "TF-FAIL root=$rel step=test exit=$rc"
+      return "$rc"
+    fi
+    marker "TF-TEST root=$rel status=PASS"
+  else
+    marker "TF-TEST root=$rel status=NONE (no tests/*.tftest.hcl)"
+  fi
+  return 0
 }
 
 if ((SKIP_TF)); then
@@ -376,7 +392,7 @@ else
   run_gate 5 "terraform fmt -check -recursive infra/terraform" gate_tf_fmt
   n=6
   for root in "${TF_ROOTS[@]}"; do
-    run_gate "$n" "terraform validate $root (init -backend=false, temporary TF_DATA_DIR)" gate_tf_validate "$root"
+    run_gate "$n" "terraform validate $root (init -backend=false, temporary TF_DATA_DIR; terraform test if tests/ exists)" gate_tf_validate "$root"
     n=$((n + 1))
   done
 fi

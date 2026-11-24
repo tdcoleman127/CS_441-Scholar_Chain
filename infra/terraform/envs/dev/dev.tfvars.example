@@ -81,6 +81,13 @@ neptune_skip_final_snapshot    = true
 neptune_backup_retention_days  = 1
 
 # Runtime (D8, D11, D12). Set these before enable_runtime = true. Dummy values shown.
+# runtime_mode: "aws" (default) serves the release named by release_run_id from S3 and DynamoDB.
+# "fixture" serves the built-in SYNTHETIC release (modules/services LocalFixture: Alice Adams,
+# Bob Brown, ...) and reads no data store. fixture is for Phase 14 only, before real data is loaded;
+# set it back to "aws" after Phase 15 loads data. In fixture mode the service ignores
+# release_run_id and runtime_algorithm_env, but Terraform still requires both (use the fixture's
+# values, see the Phase 14 part A report).
+runtime_mode         = "aws"
 image_tag            = "" # full 40-character Git SHA pushed by scripts/deploy.sh
 release_run_id       = "" # run:v1:<64 hex> of the release whose exports the API serves
 api_desired_count    = 1
