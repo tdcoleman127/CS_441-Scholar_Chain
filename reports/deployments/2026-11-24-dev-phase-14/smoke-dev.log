@@ -1,0 +1,22 @@
+[smoke-test] STEP 0 BEGIN: configuration
+[smoke-test] ENV environment=dev base_url=http://scholarchain-dev-api-1482942421.us-east-1.elb.amazonaws.com expected_sha=0c827107c5a0d8271619b013f81e5e9fa47b896a require_ready=1 api_key=(set, not printed) question="Who are the coauthors of Alice Adams?"
+[smoke-test] STEP 0 OK: configuration
+[smoke-test] STEP 1 BEGIN: GET /healthz
+[smoke-test] CHECK healthz PASS status=200
+[smoke-test] STEP 2 BEGIN: GET /readyz
+[smoke-test] CHECK readyz PASS status=200
+[smoke-test] STEP 3 BEGIN: POST /v1/query without credentials
+[smoke-test] CHECK query-unauthenticated PASS status=401 error=UNAUTHENTICATED
+[smoke-test] STEP 4 BEGIN: bounded researcher query with the API key (Idempotency-Key set)
+[smoke-test] CHECK query-authenticated PASS status=200 query_id=qry-70dff6f98b9409999bf2fee26c428066 body={"queryId":"qry-70dff6f98b9409999bf2fee26c428066","mode":"synchronous","status":"ANSWERED","answer":{"summary":"\"Alice Adams\" (researcher:sc1:f3fc6132cbef1552afe5801f0878547aa393ea1ba8f72b71e970c56c825b27c4) coauthored with \"Bob Brown\" (researcher:sc1:5cda7c05685184fa8937ce85e42d5abdf2e5d4ddff1b
+[smoke-test] STEP 5 BEGIN: idempotent replay (same body, same Idempotency-Key)
+[smoke-test] CHECK idempotent-replay PASS status=200 replayed=true query_id=qry-70dff6f98b9409999bf2fee26c428066
+[smoke-test] STEP 6 BEGIN: idempotency conflict (same Idempotency-Key, different body)
+[smoke-test] CHECK idempotency-conflict PASS status=409 error=IDEMPOTENCY_CONFLICT
+[smoke-test] STEP 7 BEGIN: fetch evidence for a returned claim
+[smoke-test] CHECK claim-evidence PASS status=200 evidence_id=evidence:v1:6bf64b1d97dc038a8dfa0748368565167c0a5e13da397b14e2be51587ce6116c
+[smoke-test] STEP 8 BEGIN: expected error path (unknown request field)
+[smoke-test] CHECK invalid-field PASS status=400 error=INVALID_FIELD
+[smoke-test] STEP 9 BEGIN: deployed revision (read-only ECS)
+[smoke-test] CHECK revision PASS task=c6422cbb1170484daa5ed318d7b18b2c tag=0c827107c5a0d8271619b013f81e5e9fa47b896a
+[smoke-test] RESULT status=PASSED expected_sha=0c827107c5a0d8271619b013f81e5e9fa47b896a ready=1

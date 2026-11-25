@@ -1,0 +1,46 @@
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project p16-offline-build-build from ledger.sbt...
+[info] loading project definition from <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\project\project
+[info] loading settings for project p16-offline-build from plugins.sbt...
+[info] loading project definition from <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/<USERPROFILE>/AppData/Local/Temp/claude/1f54427403e3b6f5/7a93b946-5f96-4712-abd9-3f3628deca49/scratchpad/p16-offline/)
+[info] compiling 16 Scala sources to <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\modules\storage\target\scala-3.3.8\classes ...
+[info] compiling 8 Scala sources to <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\modules\hadoop\target\scala-3.3.8\classes ...
+[info] done compiling
+[info] compiling 14 Scala sources to <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\modules\rag\target\scala-3.3.8\classes ...
+[info] done compiling
+[info] done compiling
+[info] compiling 19 Scala sources to <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\modules\services\target\scala-3.3.8\classes ...
+[info] done compiling
+[info] compiling 22 Scala sources to <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\tests\contracts\target\scala-3.3.8\test-classes ...
+[warn] -- [E198] Unused Symbol Warning: <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\tests\contracts\src\test\scala\edu\uic\cs441\scholarchain\tests\adversarial\VectorIngestionSuite.scala:5:46 
+[warn] 5 |import edu.uic.cs441.scholarchain.rag.runtime.*
+[warn]   |                                              ^
+[warn]   |                                              unused import
+[warn] -- [E198] Unused Symbol Warning: <USERPROFILE>\AppData\Local\Temp\claude\1f54427403e3b6f5\7a93b946-5f96-4712-abd9-3f3628deca49\scratchpad\p16-offline\tests\contracts\src\test\scala\edu\uic\cs441\scholarchain\tests\adversarial\VectorIngestionSuite.scala:6:43 
+[warn] 6 |import edu.uic.cs441.scholarchain.services.LocalFixture
+[warn]   |                                           ^^^^^^^^^^^^
+[warn]   |                                           unused import
+[warn] two warnings found
+[info] done compiling
+SLF4J(W): Class path contains multiple SLF4J providers.
+SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@4fe5ff34]
+SLF4J(W): Found provider [org.apache.logging.slf4j.SLF4JServiceProvider@730d7ddb]
+SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@4fe5ff34]
+2026-11-24 19:52:06,371 WARN o.a.s.s.c.util.SparkStringUtils - Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.GraphAnalyticsSuite[0m started
+[32medu.uic.cs441.scholarchain.tests.adversarial.GraphAnalyticsSuite[0m: finished [90m64.777s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.GraphAnalyticsSuite[0m finished: 0 failed, 0 ignored, 6 total [90m64.808s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.IdentityVetoEndToEndSuite[0m started
+[32medu.uic.cs441.scholarchain.tests.adversarial.IdentityVetoEndToEndSuite[0m: finished [90m75.641s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.IdentityVetoEndToEndSuite[0m finished: 0 failed, 0 ignored, 16 total [90m75.641s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.EntityResolutionAdversarialSuite[0m started
+[32medu.uic.cs441.scholarchain.tests.adversarial.EntityResolutionAdversarialSuite[0m: finished [90m1.039s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.EntityResolutionAdversarialSuite[0m finished: 0 failed, 0 ignored, 10 total [90m1.041s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.ErStrictCrossPathSuite[0m started
+[32medu.uic.cs441.scholarchain.tests.adversarial.ErStrictCrossPathSuite[0m: finished [90m2.743s[0m
+Test run [36medu.uic.cs441.scholarchain.tests.adversarial.ErStrictCrossPathSuite[0m finished: 0 failed, 0 ignored, 6 total [90m2.743s[0m
+[info] Passed: Total 38, Failed 0, Errors 0, Passed 38
+[success] Total time: 209 s (0:03:29.0), completed Nov 24, 2026, 7:53:41 PM

@@ -1,0 +1,150 @@
+# Phase 16, offline part: evaluation groups 1 (entity resolution) and 2 (graph correctness).
+# Owner: experiment-engineer. Raw files under raw/ are immutable once written.
+experiment_id: phase-16-offline-eval-groups-1-2
+manifest_version: 1
+work_order: >-
+  Phase 16 (offline part), orchestrator work order relayed as approved by the human architect.
+  Groups 1 and 2 only, offline, no AWS calls, no change to modules/** or any policy.
+approval:
+  cost_bound_usd: 0          # local machine only; no cloud resources are touched
+  recorded_human_approval: >-
+    NOT RECORDED in the repository at the source commit: docs/agent-runs/phase-16/human-gate.md
+    is an empty file at 0c82710. The approval was relayed by the orchestrator. The human should
+    record it (or reject this run) in docs/agent-runs/phase-16/human-gate.md.
+
+source:
+  repository_commit: 0c827107c5a0d8271619b013f81e5e9fa47b896a
+  commit_time: 2026-11-24T11:45:16-06:00
+  working_tree: >-
+    Clean clone of the commit in a session scratchpad directory (isolated from the main
+    repository while scripts/deploy.sh ran there). Only experiments/phase-16/offline/** was
+    added; nothing under modules/** was modified.
+  module_changes_since_phase_11_acceptance: >-
+    none (git log 85067146..HEAD -- modules/entity-resolution modules/spark modules/core is empty)
+
+datasets:
+  committed_samples:
+    manifest: datasets/samples/SHA256SUMS
+    manifest_sha256: 05517c80b66ad3454c2c2b93ddff1c9bab7c4980a0950b756252d9a21b560ad2
+    verification: "sha256sum -c SHA256SUMS in the clone: 7/7 OK"
+    files:
+      arxiv/arxiv-oai-sample.xml: 392f94c165c4c5744f3a1bd090319ecb3d1001e31743019dbb9ebb2c54970851
+      crossref/crossref-works-sample.jsonl: a52e792af2231c000e9ef3ed36ed5912d7a222dca53f801d5756f081d3d151b3
+      dblp/dblp-malformed.xml: 248e5866fa03e6eff42b613dfecdf5c02872e7ace69b5e3651505e8bfd64892a
+      dblp/dblp-sample.xml: e8113ccc7e103fc9cb825cc79445722d67046660669e23676fa922fa535be76a
+      dblp/dblp.dtd: 2d864498f9eef9298662df11e3874171ff24cd4a21ab5974f1369c90acdb1ef6
+      openalex/openalex-works-sample.jsonl: b55b9e82ed029cb3a4e65d790a815769514fc0d29ad496a73ceb16e887fe78f6
+      opencitations/opencitations-index-sample.csv: eddfb3b453b5119a8a25d0f53d86f5dc1a1713f2654f42e5c8c54c5b2a40ffdf
+  er_gold_set_v1:
+    labeling-worksheet-v1.csv: 449c3b828d8495ca999a2d05d1cdc7b0f42fdca07a6ac7b627a66a1e163152e4
+    mentions-v1.csv: 20b5bf9e5dda416b40d0ccb517a4d1b5137dda534dc83d83fe9cdb8787b6e973
+    selection-manifest-v1.txt: 03fb2afc1246725b1d88ca30a0260f1230341d652332325b1c25b08281530af7
+    LABELING-GUIDE.md: 454f06d6b17a630055f43b34acc0217ff56848a2ccb82534716a02591363b5eb
+    pairs: 48
+    labels: human (labeler recorded in the worksheet); not relabeled here
+
+configuration:
+  er_policy_file: modules/entity-resolution/src/main/resources/scholarchain/er-policy-v5.conf
+  er_policy_sha256: 10c229c8da82bddafdefec83b5ee87b874d98309d3011f4fc58a57deec25ada9
+  er_policy_version: er-policy-v5
+  er_thresholds: {accept: 0.85, reject: 0.55}
+  er_sweep: {accept: [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95], reject: [0.30, 0.40, 0.50, 0.55, 0.60, 0.70]}
+  spark: "3.5.8 local mode inside sbt test (version from the raw log)"
+
+machine:
+  os: Windows 11 Home 10.0.26200 (MINGW64 / Git for Windows bash)
+  logical_cpus: 16
+  jvm: Amazon Corretto 17.0.20.1
+  sbt: 1.12.15
+  region: none (offline; no AWS)
+
+resource_limits:
+  cloud: none
+  concurrency: 1 sbt process at a time in the clone
+  time_box: 30 min target, 45 min hard stop
+
+runs:
+  - id: R01-er-module-tests
+    command: sbt -batch "entityResolution/test"
+    working_directory: clone root
+    start_utc: 2026-11-25T01:39:17Z
+    end_utc: 2026-11-25T01:40:09Z
+    exit_code: 0
+    raw: raw/01-er-test.log  # ignored by .gitignore:14 (*.log); needs git add -f, see raw_collection.git_ignore
+  - id: R02-spark-module-tests
+    command: sbt -batch "sparkAnalytics/test"
+    working_directory: clone root
+    start_utc: "2026-11-25T01:42:25Z (approximate: sbt started about 34 s before the first Spark log line at 01:42:59Z; sbt reports 294 s total)"
+    end_utc: 2026-11-25T01:47:19Z
+    exit_code: 0
+    raw: raw/02-spark-test.log.gz (gzip of the raw log; see raw_collection.compression)
+  - id: R03-contract-graph-and-er-suites
+    command: >-
+      sbt -batch "contractTests/testOnly
+      edu.uic.cs441.scholarchain.tests.adversarial.GraphAnalyticsSuite
+      edu.uic.cs441.scholarchain.tests.adversarial.IdentityVetoEndToEndSuite
+      edu.uic.cs441.scholarchain.tests.adversarial.EntityResolutionAdversarialSuite
+      edu.uic.cs441.scholarchain.tests.adversarial.ErStrictCrossPathSuite"
+    working_directory: clone root
+    start_utc: "2026-11-25T01:50:12Z (approximate: end minus the 209 s sbt total)"
+    end_utc: 2026-11-25T01:53:41Z
+    exit_code: 0
+    raw: raw/03-contract-graph-er.log  # ignored by .gitignore:14 (*.log); needs git add -f, see raw_collection.git_ignore
+  - id: R04-er-gold-set-evaluation-v5
+    command: >-
+      sbt "entityResolution/runMain edu.uic.cs441.scholarchain.er.WorksheetEvalMain
+      modules/entity-resolution/gold/v1/labeling-worksheet-v1.csv"
+    status: NOT RUN (blocked for every agent by guard-dangerous.sh section 6b, sbt runMain).
+    action: MANUAL ACTION REQUIRED, the human runs it and saves verbatim output as raw/04-er-gold-eval-v5.txt
+
+metric_sources:
+  - sbt test-framework summary lines ("Test run ... finished", "Passed: Total") in raw/*.log
+  - WorksheetEvalMain report (R04, pending human run)
+  - no CloudWatch, no AWS sources
+
+raw_collection:
+  redaction: >-
+    Each sbt run's stdout and stderr was captured verbatim to a scratchpad file outside the
+    repository, then copied into raw/ with one sed pass that replaces the local user-profile path
+    prefix with <USERPROFILE>, the local host name with <HOST>, and the local user name with
+    <USER>. No other byte is changed (line counts equal). The literal values are not recorded
+    anywhere in the repository. ANSI color codes from sbt are kept.
+  immutability: >-
+    raw/ files are written once and never edited. Exception, disclosed: raw/01 and raw/02 were
+    regenerated twice from the same verbatim scratchpad capture while the redaction rule was being
+    completed (the first pass missed backslash paths, the second missed the host and user names in
+    Spark log lines), before any result was read from them. The checksums below are final.
+  compression: >-
+    raw/02-spark-test.log (11,579,704 bytes, mostly Spark INFO lines) is too large for Git, so it is
+    stored only as raw/02-spark-test.log.gz (747,420 bytes), made after collection with
+    "gzip -9 -n -c raw/02-spark-test.log > raw/02-spark-test.log.gz" (GNU gzip 1.13; -n omits the
+    name and timestamp, so the output is reproducible: two runs gave the same sha256). Compression
+    only; no byte of the log content changed. Verify with
+    "gunzip -c raw/02-spark-test.log.gz | sha256sum", which must print the uncompressed sha256 below.
+    The other raw files are stored uncompressed.
+  git_ignore: >-
+    raw/01-er-test.log and raw/03-contract-graph-er.log match the repository ignore rule
+    ".gitignore:14: *.log" (confirmed with git check-ignore -v). A plain
+    "git add experiments/phase-16" therefore leaves them out, and the checksums and links to them
+    in this manifest and results.md would point at files that are not in the repository. The other
+    raw files (00-start-utc.txt, 02-spark-test.log.gz, 99-end-utc.txt) are not ignored.
+    .gitignore is owned by build-engineer and is not changed here. MANUAL ACTION REQUIRED: when the
+    human archives this experiment, run from the repository root
+    "git add -f experiments/phase-16/offline/raw/01-er-test.log experiments/phase-16/offline/raw/03-contract-graph-er.log"
+    in addition to "git add experiments/phase-16", then confirm both appear in "git status".
+  collection_window_utc: {start: 2026-11-25T01:39:02Z, end: 2026-11-25T01:54:07Z}
+  raw_sha256:
+    raw/00-start-utc.txt: 43a001be96fe0f2dc069d64cf62358d1ae713ee1a561744ea6adf0a107e78491
+    # 01 and 03 are git-ignored (*.log); archive them with git add -f (raw_collection.git_ignore).
+    raw/01-er-test.log: 25768bbc7683746b6241ab0ec45056a70c72ca06f58e36f6ad5636ac976b4f90
+    raw/02-spark-test.log (uncompressed content, not stored): d237121035745d8ca00e407830d0639de0a71bacdf11f568eb5d65871b5884f0
+    raw/02-spark-test.log.gz (stored file): 9e039fefaa2aad2c3b7dd47d24eddf355b8ac1c019f34e01b7e37f71047814a4
+    raw/03-contract-graph-er.log: a88b84ce35c30b4ea84e5ca2beb45b51733ce3d8b303a0c60e0bea2e03bafa5b
+    raw/99-end-utc.txt: 3d4649f302169ab5ebd3cbe792b45f31a8eb657d761188b280a3b3df0396d431
+
+results_summary:
+  R01: "63 passed, 0 failed, 0 errors"
+  R02: "40 passed, 0 failed, 0 errors"
+  R03: "38 passed, 0 failed, 0 errors"
+  R04: "not run (guard-blocked runMain); human action required"
+  sample_scale_integrity_rates: "not measured (needs runMain or the bounded EMR pipeline)"

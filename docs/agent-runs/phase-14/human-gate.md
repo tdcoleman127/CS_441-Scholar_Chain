@@ -68,13 +68,6 @@ Do not apply.
 Orchestrator: save the report as docs/agent-runs/phase-14/plan-infra-engineer.md. Run code-reviewer on
 the plan output. Stop and present the checksum, the counts, and the cost for my Step 3 gate.
 
-
-
-Step 1b-0 approved and applied, plan checksum f031d9c9ed5a5f827d5774040c603a0e6be7d7800c69c88600ba6b90a3f0e26a, result 2 added / 0 changed / 0 destroyed;
-the deployment role is trusted to the ScholarChainAdmin SSO role;
-you applied it manually with scholarchain-admin.
-
-
 ## Phase 14 human sign-off (2026-11-24)
 
 ### Step 1a: runtime_mode fixture variable
@@ -100,3 +93,17 @@ APPROVED-DEPLOY-PLAN-SHA256: 8ce269bf42fb54f925bef35a5c990ac2529ea4d7e85ec320f83
 - Human wrote the API key digest secret and pushed the bootstrap image with package.sh --push.
 - Human ran terraform fmt on the local dev.tfvars after Step 1b attempt 1 failed the fmt check.
 - Human runs deploy.sh (scholarchain-deploy profile) and smoke-test.sh in Git Bash; deploy-engineer verifies read-only and writes the deployment report.
+
+### Phase 14 results
+- Step 1b applied by the human with scholarchain-admin: Apply complete! Resources: 17 added, 1 changed, 0 destroyed.
+- deploy.sh dev (human, scholarchain-deploy profile): RESULT status=DEPLOYED, commit 0c827107c5a0d8271619b013f81e5e9fa47b896a, digest sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2, scholarchain-dev-api:2, scholarchain-dev-worker:2.
+- smoke-test.sh dev (human; REQUIRE_READY=1; fixture question "Who are the coauthors of Alice Adams?"): 9/9 PASS, RESULT status=PASSED. Answer is synthetic fixture data.
+- deploy-engineer read-only verification: healthy and ready, digest matches, 0 alarms in ALARM. Report: reports/deployments/2026-11-24-dev-phase-14.md.
+- Rollback: none needed. Rollback base api:1 / worker:1.
+- Runtime left ON (about USD 0.10-0.11/h, estimated) for Phase 15; turned off at final cleanup.
+- Known limitation found during Phase 14: aws runtime mode has no live Neptune adapter (UnavailableGraphStore), no S3 Vectors retriever, and a template synthesizer; fixture mode is the deployed configuration.
+- Phase 14 gate: ACCEPTED.
+
+- Reviewed: deploy report, logs, Phase 16 offline results, Phase 17 drafts. code-reviewer rounds 1 (REQUEST_CHANGES, 1 major / 6 minor), 2 (REQUEST_CHANGES, 2 minor), 3 (APPROVE). See review-01..03.md.
+- Remaining risks: ALB is public on HTTP:80 while on; full account ID already in committed history (docs/agent-runs/phase-00-09-review.md), accepted because the repository is private; Phase 16 offline run approved here as $0 local work.
+- Accepted commit: recorded in commit.txt.

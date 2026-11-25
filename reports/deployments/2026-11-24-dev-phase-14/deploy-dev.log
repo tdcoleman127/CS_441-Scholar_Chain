@@ -1,0 +1,130 @@
+[deploy] STEP 0 BEGIN: verify environment 'dev', tools, and configuration
+[deploy] ENV environment=dev region=us-east-1 repository=scholarchain-dev-services cluster=scholarchain-dev
+[deploy] STEP 0 OK: configuration
+[deploy] STEP 1 BEGIN: refuse a dirty tree; resolve the Git SHA
+[deploy] REVISION git_sha=0c827107c5a0d8271619b013f81e5e9fa47b896a image_tag=0c827107c5a0d8271619b013f81e5e9fa47b896a
+[deploy] APPROVAL plan_sha256=8ce269bf42fb54f925bef35a5c990ac2529ea4d7e85ec320f8343089b9fa3668 env=dev recorded_in=docs/agent-runs/phase-14/human-gate.md
+[deploy] STEP 1 OK: clean tree and recorded approval
+[deploy] STEP 2 BEGIN: read-only preflight: identity, repository, cluster, services
+[deploy] SERVICE name=scholarchain-dev-api current_task_definition=scholarchain-dev-api:1 desired=1
+[deploy] SERVICE name=scholarchain-dev-worker current_task_definition=scholarchain-dev-worker:1 desired=0
+[deploy] PROVENANCE service=scholarchain-dev-api base_task_definition=scholarchain-dev-api:1 release_run_id=run:v1:079cb5d32f20d399305c3f95b3c7030611f398011b92347effe139561078f7fc
+[deploy] PROVENANCE service=scholarchain-dev-worker base_task_definition=scholarchain-dev-worker:1 release_run_id=run:v1:079cb5d32f20d399305c3f95b3c7030611f398011b92347effe139561078f7fc
+[deploy] STEP 2 OK: preflight
+[deploy] STEP 3 BEGIN: build services image at 0c827107c5a0d8271619b013f81e5e9fa47b896a (sbt dockerLocal, docker/services/Dockerfile)
+[info] welcome to sbt 1.12.15 (Amazon.com Inc. Java 17.0.20.1)
+[info] loading settings for project cs_441-scholar_chain-build-build from ledger.sbt...
+[info] loading project definition from <USERPROFILE>\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project\project
+[info] loading settings for project cs_441-scholar_chain-build from plugins.sbt...
+[info] loading project definition from <USERPROFILE>\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\project
+[info] loading settings for project root from build.sbt...
+[info] set current project to scholarchain (in build file:/<USERPROFILE>/OneDrive/Desktop/UIC%20Folder/CS%20441/CS_441-Scholar_Chain/)
+[info] Assembly jar up to date: <USERPROFILE>\OneDrive\Desktop\UIC Folder\CS 441\CS_441-Scholar_Chain\modules\services\target\scala-3.3.8\scholarchain-services-0.1.0-SNAPSHOT.jar
+[info] Building local image scholarchain-services:0.1.0-SNAPSHOT
+[info] #0 building with "desktop-linux" instance using docker driver
+[info] #1 [internal] load build definition from Dockerfile
+[info] #1 transferring dockerfile: 1.55kB 0.1s done
+[info] #1 DONE 0.1s
+[info] #2 [internal] load metadata for docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9
+[info] #2 ...
+[info] #3 [auth] library/amazoncorretto:pull token for registry-1.docker.io
+[info] #3 DONE 0.0s
+[info] #2 [internal] load metadata for docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9
+[info] #2 DONE 0.8s
+[info] #4 [internal] load .dockerignore
+[info] #4 transferring context: 2B done
+[info] #4 DONE 0.0s
+[info] #5 [1/3] FROM docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9
+[info] #5 resolve docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9 0.0s done
+[info] #5 DONE 0.0s
+[info] #6 [internal] load build context
+[info] #6 transferring context: 28.90MB 1.8s done
+[info] #6 DONE 1.8s
+[info] #7 [2/3] WORKDIR /opt/scholarchain
+[info] #7 CACHED
+[info] #8 [3/3] COPY services.jar /opt/scholarchain/services.jar
+[info] #8 CACHED
+[info] #9 exporting to image
+[info] #9 exporting layers done
+[info] #9 exporting manifest sha256:dc6ad41a62faf2550fec3877ecab2f08750e8efef9406e92f4e3d8a07c83b408 done
+[info] #9 exporting config sha256:5ce4e814b5344337cc07a7c4ac9667b83b42f12cf55f0407b51f88f1ce17a113 done
+[info] #9 exporting attestation manifest sha256:e0942b21e4a5929706dfaababa8bc0f3a751aedacc2cf5d60979b9402b77bdb0
+[info] #9 exporting attestation manifest sha256:e0942b21e4a5929706dfaababa8bc0f3a751aedacc2cf5d60979b9402b77bdb0 0.0s done
+[info] #9 exporting manifest list sha256:550fdb72130bf6d5d5c11e7d79714a68336e1d86951048e1c944955fb689f00f 0.0s done
+[info] #9 naming to docker.io/library/scholarchain-services:0.1.0-SNAPSHOT done
+[info] #9 unpacking to docker.io/library/scholarchain-services:0.1.0-SNAPSHOT done
+[info] #9 DONE 0.2s
+[success] Total time: 9 s, completed Nov 24, 2026, 7:55:04 PM
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.55kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 36B done
+#4 DONE 0.0s
+
+#5 [1/3] FROM docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9
+#5 resolve docker.io/library/amazoncorretto:17.0.20-al2023-headless@sha256:f0360fa5e8b6bd5cf85443c1425705de9b55928068a8045f5093ed0b6f9661d9 0.0s done
+#5 DONE 0.0s
+
+#6 [2/3] WORKDIR /opt/scholarchain
+#6 CACHED
+
+#7 [3/3] COPY services.jar /opt/scholarchain/services.jar
+#7 CACHED
+
+#8 exporting to image
+#8 exporting layers done
+#8 exporting manifest sha256:36599d9f0260ca603e72187b0ae8a627c840680fc341bb885cf463506c0baf53 0.0s done
+#8 exporting config sha256:e0565b9d7627690c7fd858982efca4cf241a4f25e9f722ad873c0d3773c022c4 0.0s done
+#8 exporting attestation manifest sha256:49a1d173fbe3804b97b1d19b28cafa5d414f8d7c6434cf6b8e7a3bbf76d42db9 0.0s done
+#8 exporting manifest list sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2 0.0s done
+#8 naming to <account>.dkr.ecr.us-east-1.amazonaws.com/scholarchain-dev-services:0c827107c5a0d8271619b013f81e5e9fa47b896a
+#8 naming to <account>.dkr.ecr.us-east-1.amazonaws.com/scholarchain-dev-services:0c827107c5a0d8271619b013f81e5e9fa47b896a done
+#8 unpacking to <account>.dkr.ecr.us-east-1.amazonaws.com/scholarchain-dev-services:0c827107c5a0d8271619b013f81e5e9fa47b896a done
+#8 DONE 0.2s
+[deploy] STEP 3 OK: built scholarchain-dev-services:0c827107c5a0d8271619b013f81e5e9fa47b896a
+[deploy] STEP 4 BEGIN: push scholarchain-dev-services:0c827107c5a0d8271619b013f81e5e9fa47b896a
+The push refers to repository [<account>.dkr.ecr.us-east-1.amazonaws.com/scholarchain-dev-services]
+44136fa355b3: Waiting
+4633996f29e9: Waiting
+7234d0a9b6ba: Waiting
+125fe319d64b: Waiting
+125fe319d64b: Waiting
+44136fa355b3: Waiting
+4633996f29e9: Waiting
+7234d0a9b6ba: Waiting
+0c0d66d482dd: Layer already exists
+8d900628cfb8: Layer already exists
+125fe319d64b: Layer already exists
+44136fa355b3: Already exists
+4633996f29e9: Waiting
+7234d0a9b6ba: Layer already exists
+4633996f29e9: Pushed
+0c827107c5a0d8271619b013f81e5e9fa47b896a: digest: sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2 size: 856
+[deploy] IMAGE pushed digest=sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2
+[deploy] STEP 4 OK: pushed
+[deploy] STEP 5 BEGIN: register task-definition revisions from the Terraform base with image tag 0c827107c5a0d8271619b013f81e5e9fa47b896a
+[deploy] TASK-DEFINITION service=scholarchain-dev-api base=scholarchain-dev-api:1 previous=scholarchain-dev-api:1 new=scholarchain-dev-api:2 release_run_id=run:v1:079cb5d32f20d399305c3f95b3c7030611f398011b92347effe139561078f7fc
+[deploy] TASK-DEFINITION service=scholarchain-dev-worker base=scholarchain-dev-worker:1 previous=scholarchain-dev-worker:1 new=scholarchain-dev-worker:2 release_run_id=run:v1:079cb5d32f20d399305c3f95b3c7030611f398011b92347effe139561078f7fc
+[deploy] STEP 5 OK: registered
+[deploy] STEP 6 BEGIN: update services and wait for stable (timeout 900s)
+[deploy] UPDATED service=scholarchain-dev-api task_definition=scholarchain-dev-api:2 desired=1
+[deploy] UPDATED service=scholarchain-dev-worker task_definition=scholarchain-dev-worker:2 desired=0
+[deploy] STABLE service=scholarchain-dev-api
+[deploy] STABLE service=scholarchain-dev-worker
+[deploy] STEP 6 OK: services stable
+[deploy] STEP 7 BEGIN: verify the deployed revision (task definition, image tag, image digest)
+[deploy] VERIFIED service=scholarchain-dev-api task=c6422cbb1170484daa5ed318d7b18b2c tag=0c827107c5a0d8271619b013f81e5e9fa47b896a digest=sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2 status=RUNNING
+[deploy] VERIFIED service=scholarchain-dev-worker task_definition=scholarchain-dev-worker:2 (desired 0: no running task to inspect)
+[deploy] STEP 7 OK: deployed revision verified
+[deploy] RESULT status=DEPLOYED git_sha=0c827107c5a0d8271619b013f81e5e9fa47b896a plan_sha256=8ce269bf42fb54f925bef35a5c990ac2529ea4d7e85ec320f8343089b9fa3668 digest=sha256:12049aababb263f53bffaae3eaa7d271cae18a15ce3c85fe7a94d2bfd8db94a2 api=scholarchain-dev-api:2 worker=scholarchain-dev-worker:2 release_run_id=run:v1:079cb5d32f20d399305c3f95b3c7030611f398011b92347effe139561078f7fc
